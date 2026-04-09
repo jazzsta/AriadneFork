@@ -440,7 +440,7 @@ def pareto_steiner_fast(G, alpha):
 
     """
     unpaired_nodes contains the set of nodes for which we need to (re)-compute the closest
-    node that has not been added to the tree. Gonna make it really better
+    node that has not been added to the tree. Gonna make it really really better
     """
     unpaired_nodes = set([base_node])
 
