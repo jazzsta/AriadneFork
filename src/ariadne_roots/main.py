@@ -1012,6 +1012,10 @@ def get_graph_from_json(json_file):
         data = json.load(h)
         graph = json_graph.adjacency_graph(data)
 
+        # Convert to undirected if needed
+    if graph.is_directed():
+        graph = graph.to_undirected()
+
     return graph
 
 

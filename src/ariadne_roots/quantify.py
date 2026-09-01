@@ -279,8 +279,8 @@ def plot_graph(
         else:
             node_colors.append(secondary_node_color)  # Other nodes
 
-    # Edge widths
-    edge_widths = [edge_width_factor * G[u][v].get("weight", 1) for u, v in G.edges()]
+    # Edge widths   (changed so that they are minimal for better visualization)
+    edge_widths = [edge_width_factor for u, v in G.edges()]
 
     # Create a matplotlib figure and axes
     fig, ax = plt.subplots(figsize=figsize)
