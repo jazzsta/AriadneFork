@@ -8,22 +8,30 @@ Time series
 """
 
 import matplotlib.pyplot as plt
-import re
+import json
 import numpy as np
 import copy
 import networkx as nx
 import math
 import logging
+from pathlib import Path
 
-from queue import Queue
 from scipy.spatial import ConvexHull  # Import ConvexHull class
+from matplotlib.colors import hsv_to_rgb, LinearSegmentedColormap, to_hex
+from matplotlib.patches import Rectangle
 
 from ariadne_roots.pareto_functions import (
-    pareto_front,
-    random_tree,
+    pareto_front_generic,
+    pareto_steiner_fast_analytical_preserve_tips_full_greedy,
+    pareto_steiner_fast_analytical_preserve_tips_semi_random,
     pareto_front_3d_path_tortuosity,
     random_tree_3d_path_tortuosity,
     get_critical_nodes,
+    straighten_tree,
+    graph_costs,
+    point_dist,
+    _tree_hover_payload,
+    random_steiner_wrapper_analytical,
 )
 from ariadne_roots import config
 
@@ -40,319 +48,14 @@ logging.basicConfig(
 )
 
 
-def distance(p1, p2):
-    """Compute 2D Euclidian distance between two (x,y) points."""
-    return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
 
-def make_graph(target):  # pragma: no cover
-    """Construct graph from file and check for errors.
-
-    Legacy function for text file format. Not used in current JSON workflow.
-    """
-    G = nx.Graph()
-    with open(target, "r") as f:  # parse input file
-        q = Queue()
-        node_num = 1  # label nodes with unique identifiers
-        for line in f:
-            if line.startswith("##"):  # Level heading
-                group_num = 0  # count nodes per level, and reset on level change, to match hierarchy info from tuples
-                level = int(line.rstrip().split(": ")[1])
-                continue
-            else:
-                info = line.rstrip().split("; ")
-
-                coords = tuple(int(float(i)) for i in info[0].split())[
-                    0:2
-                ]  # change output coords from floats to ints
-                metadata = re.findall(
-                    r"\(.+?\)|\[.+?\]", info[1]
-                )  # find chunks in brackets or parenthesis
-
-                root_metadata = metadata[-1]  # eg (PR, None)
-                child_metadata = []  # eg ['[1,0]']
-
-                for el in metadata:
-                    if el != root_metadata:
-                        child_metadata.append(el)
-
-                if not child_metadata:  # terminal node, no children
-                    G.add_node(node_num, pos=coords)
-                    parent_node = q.get()
-
-                    parent_level = parent_node[1][0]
-                    parent_group = parent_node[1][1]
-
-                    if level == parent_level and group_num == parent_group:
-                        G.add_edge(
-                            node_num,
-                            parent_node[0],
-                            length=distance(
-                                G.nodes[node_num]["pos"], G.nodes[parent_node[0]]["pos"]
-                            ),
-                        )
-                    else:
-                        print("ERROR: edge assignment failed (terminal node)")
-
-                else:
-                    G.add_node(node_num, pos=coords)
-
-                    if not q.empty():
-                        parent_node = q.get()
-
-                        parent_level = parent_node[1][0]
-                        parent_group = parent_node[1][1]
-
-                        if level == parent_level and group_num == parent_group:
-                            G.add_edge(
-                                node_num,
-                                parent_node[0],
-                                length=distance(
-                                    G.nodes[node_num]["pos"],
-                                    G.nodes[parent_node[0]]["pos"],
-                                ),
-                            )
-                        else:
-                            print("Error: edge assignment failed")
-
-                    for child_node in child_metadata:
-                        q.put(
-                            (
-                                node_num,
-                                list(map(int, child_node.strip("[]").split(","))),
-                            )
-                        )
-
-                node_num += 1
-                group_num += 1
-
-    # return "Done!" (used for csv creation)
-    return G
 
 
-# G = make_graph('/Users/kianfaizi/projects/ariadne/color-final_plantA_day1.txt')
 
 
-def make_graph_alt(target):  # pragma: no cover
-    """Construct a broken graph (without problematic edges).
-
-    Legacy function for text file format. Not used in current JSON workflow.
-    """
-    G = nx.Graph()
-    with open(target, "r") as f:  # parse input file
-        q = Queue()
-        node_num = 1  # label nodes with unique identifiers
-        for line in f:
-            if line.startswith("##"):  # Level heading
-                group_num = 0  # count nodes per level, and reset on level change, to match hierarchy info from tuples
-                level = int(line.rstrip().split(": ")[1])
-                continue
-            else:
-                info = line.rstrip().split("; ")
-                if len(info) > 1:  # node has degree > 1
-                    coords = tuple(int(float(i)) for i in info[0].split())[
-                        0:2
-                    ]  # change output coords from floats to ints
-                    G.add_node(node_num, pos=coords)
-                    if not q.empty():
-                        parent_node = q.get()
-                        # print(parent_node, level, group_num, info)
-                        if (
-                            level == parent_node[1][0]
-                            and group_num == parent_node[1][1]
-                        ):  # check that the expected and actual positions of the child match
-                            G.add_edge(
-                                node_num,
-                                parent_node[0],
-                                length=distance(
-                                    G.nodes[node_num]["pos"],
-                                    G.nodes[parent_node[0]]["pos"],
-                                ),
-                            )
-                        else:
-                            print(
-                                f"Edge assignment failed: {parent_node}; {level}; {group_num}; {info}"
-                            )
-                    # place all descendants of the current node in the queue for processing in future rounds
-                    children = info[1].split()
-                    for child_node in children:
-                        q.put(
-                            (
-                                node_num,
-                                list(map(int, child_node.strip("[]").split(","))),
-                            )
-                        )  # converts each child object from list of strings to list of ints
-                else:  # terminal node (degree == 1)
-                    coords = tuple(int(float(i)) for i in info[0].rstrip(";").split())[
-                        0:2
-                    ]
-                    G.add_node(node_num, pos=coords)
-                    children = None
-                    parent_node = q.get()
-                    if level == parent_node[1][0] and group_num == parent_node[1][1]:
-                        G.add_edge(
-                            node_num,
-                            parent_node[0],
-                            length=distance(
-                                G.nodes[node_num]["pos"], G.nodes[parent_node[0]]["pos"]
-                            ),
-                        )
-                    else:
-                        print("Edge assignment failed: terminal node.")
-                node_num += 1
-                group_num += 1
-    return G
 
 
-def plot_graph(
-    G,
-    node_size_factor=20,
-    node_base_size=2,
-    edge_width_factor=1.0,
-    base_node_color="#2E8B57",
-    secondary_node_color="#A0522D",
-    edge_color="#3D2B1F",
-    critical_node_color="#FF0000",
-    with_labels=False,
-    title="Root System Graph",
-    figsize=(10, 15),
-    show_grid=True,
-    save_path=None,
-):  # pragma: no cover
-    """Plots a root-system graph using node positions from their attributes, with axes and optional grid.
-
-    Args:
-        G (networkx.DiGraph): The graph to be plotted. Must have node positions stored
-            as attributes. Assumes the graph is directed.
-        node_size_factor (float, optional): Multiplier for node sizes based on degree.
-            Defaults to 20.
-        node_base_size (int, optional): Base size for all nodes.
-            Defaults to 2.
-        edge_width_factor (float, optional): Multiplier for edge widths.
-            Defaults to 1.0.
-        base_node_color (str, optional): Color for the base node (node 0).
-            Defaults to "#2E8B57".
-        secondary_node_color (str, optional): Color for all other nodes.
-            Defaults to "#A0522D".
-        edge_color (str, optional): Color of the edges. Defaults to
-            "#3D2B1F".
-        critical_node_color (str, optional): Color for nodes with degree == 1 (critical nodes).
-            Defaults to "#FF0000".
-        with_labels (bool, optional): Whether to display labels on nodes.
-            Defaults to False.
-        title (str, optional): Title for the plot. Defaults to "Root System Graph".
-        figsize (tuple, optional): Size of the plot figure (width, height).
-            Defaults to (10, 15).
-        show_grid (bool, optional): Whether to display a grid. Defaults to True.
-        save_path (str, optional): The file path to save the plot. Defaults to None.
-
-    Raises:
-        ValueError: If any node is missing a "pos" attribute.
-
-    Returns:
-        Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
-            The matplotlib figure and axes objects for further customization.
-    """
-    # Extract positions from the nodes' "pos" attribute
-    try:
-        pos = nx.get_node_attributes(G, "pos")
-        if len(pos) != len(G.nodes()):
-            raise ValueError("Not all nodes have a 'pos' attribute.")
-    except KeyError:
-        raise ValueError("Nodes must have a 'pos' attribute for plotting.")
-
-    # Define the base node explicitly as node 0
-    base_node = 0
-    if base_node not in G.nodes():
-        raise ValueError("Node 0 (base node) is not present in the graph.")
-
-    # Node sizes
-    node_sizes = [node_base_size + G.degree(n) * node_size_factor for n in G.nodes()]
-
-    # Assign node colors based on conditions
-    node_colors = []
-    for n in G.nodes():
-        if n == base_node:
-            node_colors.append(base_node_color)  # Base node
-        elif G.degree(n) == 1:
-            node_colors.append(critical_node_color)  # critical nodes
-        else:
-            node_colors.append(secondary_node_color)  # Other nodes
-
-    # Edge widths   (changed so that they are minimal for better visualization)
-    edge_widths = [edge_width_factor for u, v in G.edges()]
-
-    # Create a matplotlib figure and axes
-    fig, ax = plt.subplots(figsize=figsize)
-
-    # Draw the graph on the given axes
-    nx.draw(
-        G,
-        pos,
-        ax,
-        with_labels=with_labels,
-        node_size=node_sizes,
-        node_color=node_colors,
-        edge_color=edge_color,
-        width=edge_widths,
-        arrows=True,  # Show direction since the graph is directed
-    )
-
-    # Invert the y-axis to match the coordinate system
-    ax.invert_yaxis()
-
-    # Add x and y axes to plot
-    ax.set_axis_on()
-    ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
-
-    # Set grid and axis labels
-    if show_grid:
-        ax.grid(color="lightgray", linestyle="--", linewidth=0.5)
-    ax.set_aspect("equal", adjustable="datalim")
-    ax.set_xlabel("X Position", fontsize=12)
-    ax.set_ylabel("Y Position", fontsize=12)
-
-    # Add title
-    ax.set_title(title, fontsize=14)
-
-    # Save the plot if a save path is provided
-    if save_path:
-        plt.savefig(save_path, bbox_inches="tight", dpi=300, facecolor="w")
-        print(f"Plot saved to {save_path}")
-
-    return fig, ax
-
-
-def save_plot(path, name, title):  # pragma: no cover
-    """Plot a Pareto front and save to .jpg.
-
-    GUI function for manual visualization. Not tested in automated test suite.
-    """
-    G = make_graph(path)
-    # check that graph is indeed a tree (acyclic, undirected, connected)
-    assert nx.is_tree(G)
-
-    edge_lengths, travel_distances_to_base, actual = pareto_front(G)
-    randoms = random_tree(G)
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    ax.set_title(title)
-    ax.set_xlabel("Total length", fontsize=15)
-    ax.set_ylabel("Travel distance", fontsize=15)
-
-    plt.plot(
-        edge_lengths,
-        travel_distances_to_base,
-        marker="s",
-        linestyle="-",
-        markeredgecolor="black",
-    )
-    plt.plot(actual[0], actual[1], marker="x", markersize=12)
-    for i in randoms:
-        plt.plot(i[0], i[1], marker="+", color="green", markersize=4)
-
-    plt.show()
 
 
 def calc_len_PR(G, root_node):
@@ -467,13 +170,6 @@ def calc_len_LRs(H):
     # add LR_index awareness: all, 1 deg, 2 deg, n deg
 
 
-def calc_density_LRs(G):  # pragma: no cover
-    """Calculate lateral root density.
-
-    Stub function - not yet implemented.
-    """
-    pass
-    # add up to _n_ degrees
 
 
 def calculate_plot_buffer(base_min, base_max, buffer_percent=0.20, min_buffer=1.0):
@@ -509,11 +205,16 @@ def calculate_plot_buffer(base_min, base_max, buffer_percent=0.20, min_buffer=1.
     return (base_min - buffer, base_max + buffer)
 
 
-def plot_all(front, actual, randoms, mrand, srand, dest):  # pragma: no cover
+def plot_all(
+    front, actual, randoms, mrand, srand, dest, hover_trees=None
+):  # pragma: no cover
     """Plot Pareto front with actual and random trees, with scaling and centering.
 
     GUI function for manual visualization. Not tested in automated test suite.
     Applies user-configured scaling and centers view on Pareto front.
+
+    ``hover_trees`` optionally carries compact actual/random tree payloads for
+    the interactive HTML hover panel.
     """
     fig = plt.figure()
     ax = fig.add_subplot(111)
@@ -602,7 +303,184 @@ def plot_all(front, actual, randoms, mrand, srand, dest):  # pragma: no cover
     svg_dest = dest.with_suffix(".svg")
     plt.savefig(svg_dest, bbox_inches="tight", format="svg")
 
+    # Also save an interactive HTML version
+    save_pareto_html(
+        front,
+        actual,
+        randoms,
+        mrand,
+        srand,
+        dest.with_suffix(".html"),
+        hover_trees=hover_trees,
+    )
+
     plt.close(fig)
+
+
+def save_pareto_html(
+    front, actual, randoms, mrand, srand, dest, hover_trees=None
+):  # pragma: no cover
+    """Save an interactive Plotly HTML version of the 2D Pareto plot.
+
+    This mirrors :func:`plot_all` but keeps marker and line sizes fixed while
+    zooming, which is the behavior of an interactive matplotlib window.
+    ``hover_trees`` optionally supplies compact actual/random tree payloads for
+    the hover panel.
+    """
+    import plotly.graph_objects as go
+
+    scale = config.length_scale_factor
+    unit = config.length_scale_unit
+
+    front_entries = sorted(
+        [
+            (alpha, x * scale, y * scale)
+            for alpha, (x, y) in front.items()
+        ],
+        key=lambda entry: entry[1],
+    )
+    front_x = [entry[1] for entry in front_entries]
+    front_y = [entry[2] for entry in front_entries]
+    front_alpha = [float(entry[0]) for entry in front_entries]
+
+    random_points = [(x * scale, y * scale) for x, y in randoms]
+    random_x = [p[0] for p in random_points]
+    random_y = [p[1] for p in random_points]
+
+    actual_x = actual[0] * scale
+    actual_y = actual[1] * scale
+    front_x_max = max(front_x)
+    front_y_max = max(front_y)
+    mrand_x = mrand * scale if np.isfinite(mrand) else front_x_max
+    mrand_y = srand * scale if np.isfinite(srand) else front_y_max
+
+    base_x_min = min(min(front_x), mrand_x)
+    base_x_max = max(front_x_max, mrand_x)
+    base_y_min = min(min(front_y), mrand_y)
+    base_y_max = max(front_y_max, mrand_y)
+    x_min, x_max = calculate_plot_buffer(base_x_min, base_x_max)
+    y_min, y_max = calculate_plot_buffer(base_y_min, base_y_max)
+
+    fig = go.Figure()
+
+    if random_x:
+        fig.add_trace(go.Scatter(
+            x=random_x,
+            y=random_y,
+            mode="markers",
+            name="Random trees",
+            marker=dict(symbol="cross", size=5, color="green", opacity=0.7),
+            hovertemplate=(
+                "Total length: %{x:.2f}<br>"
+                "Travel distance: %{y:.2f}<extra></extra>"
+            ),
+        ))
+
+    fig.add_trace(go.Scatter(
+        x=front_x,
+        y=front_y,
+        customdata=front_alpha,
+        mode="lines+markers",
+        name="Pareto front",
+        line=dict(color="#1f77b4", width=2),
+        marker=dict(
+            symbol="square",
+            size=6,
+            color="#1f77b4",
+            line=dict(color="black", width=1),
+        ),
+        hovertemplate=(
+            "Total length: %{x:.2f}<br>"
+            "Travel distance: %{y:.2f}<br>"
+            "Alpha: %{customdata:.4f}<extra></extra>"
+        ),
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[actual_x],
+        y=[actual_y],
+        mode="markers",
+        name="Actual tree",
+        marker=dict(
+            symbol="x",
+            size=14,
+            color="#ff7f0e",
+            line=dict(width=2),
+        ),
+        hovertemplate=(
+            f"Actual tree<br>Total length: {actual_x:.2f}<br>"
+            f"Travel distance: {actual_y:.2f}<extra></extra>"
+        ),
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[mrand_x],
+        y=[mrand_y],
+        mode="markers",
+        name="Random centroid",
+        marker=dict(
+            symbol="cross",
+            size=14,
+            color="red",
+            line=dict(width=2),
+        ),
+        hovertemplate=(
+            f"Random centroid<br>Total length: {mrand_x:.2f}<br>"
+            f"Travel distance: {mrand_y:.2f}<extra></extra>"
+        ),
+    ))
+
+    x_label = f"Total length ({unit})" if unit else "Total length"
+    y_label = f"Travel distance ({unit})" if unit else "Travel distance"
+
+    fig.update_layout(
+        title="Pareto front",
+        xaxis_title=x_label,
+        yaxis_title=y_label,
+        template="plotly_white",
+        hovermode="closest",
+        dragmode="zoom",
+        xaxis=dict(range=[x_min, x_max]),
+        yaxis=dict(range=[y_min, y_max]),
+        margin=dict(l=70, r=30, t=60, b=60),
+        autosize=True,
+    )
+
+    random_tree_payloads = []
+    front_tree_payloads = []
+    actual_tree_payload = None
+    if hover_trees:
+        random_tree_payloads = hover_trees.get("randoms") or []
+        front_tree_payloads = hover_trees.get("front") or []
+        actual_tree_payload = hover_trees.get("actual")
+    if len(random_tree_payloads) != len(random_points):
+        random_tree_payloads = []
+    if len(front_tree_payloads) != len(front_x):
+        front_tree_payloads = []
+
+    post_script = None
+    if random_tree_payloads or front_tree_payloads or actual_tree_payload:
+        post_script = _tree_hover_script(
+            random_tree_payloads,
+            actual_tree_payload,
+            trees_trace_name="Random trees",
+            actual_trace_name="Actual tree",
+            trees_title_prefix="Random RSA",
+            actual_title="Actual RSA",
+            front_trees=front_tree_payloads,
+            front_trace_name="Pareto front",
+            front_title_prefix="Front RSA",
+        )
+
+    destination = Path(dest)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(
+        str(destination),
+        include_plotlyjs="directory",
+        full_html=True,
+        config={"responsive": True, "displaylogo": False, "scrollZoom": True},
+        post_script=post_script,
+    )
 
 
 def plot_all_3d(
@@ -1053,39 +931,177 @@ def distance_from_front_3d(front, actual_tree):
     }
 
 
-def pareto_calcs(H):
-    """Perform Pareto-related calculations."""
-    front, actual = pareto_front(H)
+DEFAULT_N_RANDOM = 100
+
+REGION_CLASSIFICATION_FIELDS = (
+    "mean_rounds_normalized",
+    "ci_low_normalized",
+    "ci_high_normalized",
+    "local_mean_alpha",
+    "local_alpha_ci_low",
+    "local_alpha_ci_high",
+)
+
+
+def pareto_calcs(H, n_random=DEFAULT_N_RANDOM, tree_payloads=None):
+    """Perform Pareto-related calculations.
+
+    The analytical tip-preserving Steiner front is computed with the rigid
+    greedy generator. The analytical randomized Steiner baseline requires an
+    undirected graph. A converted copy is used so the caller's graph is not
+    modified.
+
+    Args:
+        H: NetworkX graph representing the root system (directed or undirected).
+        n_random: Number of analytical random trees used for the baseline.
+        tree_payloads: Optional mutable dict. When provided, it is filled with
+            compact ``"front"``, ``"actual"``, and ``"randoms"`` tree payloads
+            for HTML hover panels. It does not affect the CSV results.
+
+    Returns:
+        results, front, randoms
+    """
+    H_pareto = H.to_undirected()
+
+    front_tree_payloads = {} if tree_payloads is not None else None
+
+    front, actual = pareto_front_generic(
+        H_pareto,
+        pareto_steiner_fast_analytical_preserve_tips_full_greedy,
+        tree_payloads=front_tree_payloads,
+    )
+
+    if tree_payloads is not None:
+        ordered_keys = sorted(front, key=lambda alpha: front[alpha][0])
+        tree_payloads["front"] = [
+            front_tree_payloads[alpha]
+            for alpha in ordered_keys
+            if alpha in front_tree_payloads
+        ]
     mactual, sactual = actual
 
     # Calculate tradeoff metrics
     tradeoff_info = calculate_tradeoff(front, actual)
 
     plant_alpha, plant_scaling = distance_from_front(front, actual)
-    randoms = random_tree(H)
+
+    randoms, random_trees = random_steiner_wrapper_analytical(
+        H_pareto, n_random, optimization_rounds=0
+    )
+
+    if tree_payloads is not None:
+        tree_payloads["actual"] = _tree_hover_payload(
+            straighten_tree(H_pareto), None, None
+        )
+        tree_payloads["randoms"] = [
+            _tree_hover_payload(tree, None, None)
+            for tree in random_trees
+        ]
 
     # centroid of randoms
-    mrand = np.mean([x[0] for x in randoms])
-    srand = np.mean([x[1] for x in randoms])
-
-    rand_alpha, rand_scaling = distance_from_front(front, (mrand, srand))
+    if randoms:
+        mrand = float(np.mean([x[0] for x in randoms]))
+        srand = float(np.mean([x[1] for x in randoms]))
+        rand_alpha, rand_scaling = distance_from_front(front, (mrand, srand))
+    else:
+        mrand = float("nan")
+        srand = float("nan")
+        rand_alpha = float("nan")
+        rand_scaling = float("nan")
 
     # assemble dict for export
     results = {
-        "Total root length": mactual,
-        "Travel distance": sactual,
-        "alpha": plant_alpha,
-        "scaling distance to front": plant_scaling,
+        "Total root length": float(mactual),
+        "Travel distance": float(sactual),
+        "alpha": float(plant_alpha),
+        "scaling distance to front": float(plant_scaling),
         "Total root length (random)": mrand,
         "Travel distance (random)": srand,
-        "alpha (random)": rand_alpha,
-        "scaling (random)": rand_scaling,
+        "alpha (random)": float(rand_alpha),
+        "scaling (random)": float(rand_scaling),
     }
 
     # Merge tradeoff metrics into results
     results.update(tradeoff_info)
 
     return results, front, randoms
+
+
+def classify_region(
+    H,
+    front,
+    actual,
+    n_samples=5000,
+    region_factor=0.5,
+    save_path=None,
+    save_html_path=None,
+    scale_factor=1.0,
+    unit="",
+    progress_callback=None,
+    verbose=False,
+):
+    """Classify a root by its local optimization level and trade-off direction.
+
+    Thin UI-oriented wrapper around
+    ``exploration.estimate_rounds_for_region``. It reuses the Pareto front and
+    straightened-tree reference already computed by :func:`pareto_calcs`,
+    optionally saves the sampling plot, and returns only the dimensionless
+    fields that belong in the CSV report.
+
+    Args:
+        H: NetworkX graph representing the root system.
+        front: Pareto front dict from :func:`pareto_calcs`.
+        actual: Straightened-tree (wiring, travel) reference from
+            :func:`pareto_calcs`.
+        n_samples: Number of semi-random architectures to sample.
+        region_factor: Ellipse semi-axis scale as a fraction of the actual
+            tree's scaling distance to the front.
+        save_path: Optional path for the static Matplotlib sampling plot.
+        save_html_path: Optional path for the interactive Plotly sampling plot.
+        scale_factor: Length scale factor used only for plot axes.
+        unit: Length unit label used in the interactive plot.
+        progress_callback: Optional callable(done, total, n_inside) invoked
+            during semi-random tree generation.
+        verbose: Print progress from the sampling routine.
+
+    Returns:
+        dict with the six region-classification CSV fields.
+    """
+    sampling = estimate_rounds_for_region(
+        H.to_undirected(),
+        n_samples=n_samples,
+        region_factor=region_factor,
+        plot=save_path is not None,
+        show=False,
+        save_path=save_path,
+        front=front,
+        actual=actual,
+        scale_factor=scale_factor,
+        progress_callback=progress_callback,
+        verbose=verbose,
+        collect_trees=save_html_path is not None,
+    )
+
+    if save_html_path is not None:
+        save_sampling_html(
+            sampling,
+            save_html_path,
+            scale_factor=scale_factor,
+            region_factor=region_factor,
+            unit=unit,
+        )
+
+    def as_float(value):
+        return None if value is None else float(value)
+
+    return {
+        "mean_rounds_normalized": as_float(sampling["mean_rounds_normalized"]),
+        "ci_low_normalized": as_float(sampling["ci_low_normalized"]),
+        "ci_high_normalized": as_float(sampling["ci_high_normalized"]),
+        "local_mean_alpha": as_float(sampling["mean_alpha"]),
+        "local_alpha_ci_low": as_float(sampling["alpha_ci_low"]),
+        "local_alpha_ci_high": as_float(sampling["alpha_ci_high"]),
+    }
 
 
 def pareto_calcs_3d_path_tortuosity(H):
@@ -1176,27 +1192,8 @@ def pareto_calcs_3d_path_tortuosity(H):
 ### CONVEX HULL calculations
 
 
-def distance(p1, p2):
-    """Compute 2D Euclidian distance between two (x,y) points."""
-    return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
 
-def calculate_convex_hull_area(G):
-    # Check if the graph has at least 3 nodes
-    if len(G.nodes) < 3:
-        print("The graph must have at least 3 nodes to calculate the convex hull.")
-        return None
-
-    # Get the positions of the nodes
-    positions = np.array([data["pos"] for node, data in G.nodes(data=True)])
-
-    # Calculate the convex hull
-    hull = ConvexHull(positions)
-
-    # Get the area of the convex hull
-    hull_area = hull.area
-
-    return hull_area
 
 
 def distance(pos1, pos2):
@@ -1339,13 +1336,17 @@ def calculate_distance(p1, p2):
     return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
 
-def analyze(G, enable_3d=True):
+def analyze(G, enable_3d=True, n_random=DEFAULT_N_RANDOM, tree_payloads=None):
     """Report basic root metrics for a given graph.
 
     Args:
         G: NetworkX graph representing the root system.
         enable_3d: If True, compute 3D Pareto analysis (slower).
                    If False, return empty 3D results.
+        n_random: Number of analytical random trees used for the 2D
+                  random baseline.
+        tree_payloads: Optional mutable dict filled with compact actual/random
+                  tree payloads for the interactive Pareto HTML hover panel.
 
     Returns:
         Tuple of (results, front, randoms, results_3d, front_3d, randoms_3d).
@@ -1386,7 +1387,9 @@ def analyze(G, enable_3d=True):
     lowermost_node_pos = find_lowermost_node_of_primary_root(H, root_node)
     distance_root = calculate_distance(uppermost_node_pos, lowermost_node_pos)
 
-    results, front, randoms = pareto_calcs(H)
+    results, front, randoms = pareto_calcs(
+        H, n_random=n_random, tree_payloads=tree_payloads
+    )
 
     # 3D Pareto analysis is optional (slower: 10,201 iterations vs 101 for 2D)
     if enable_3d:
@@ -1495,3 +1498,917 @@ def analyze(G, enable_3d=True):
     results["Convex Hull Area"] = float(convex_hull_area)
 
     return results, front, randoms, results_3d, front_3d, randoms_3d
+
+def _optimization_colorscale(n_colors=256):
+    """Return the HSV color scale used for the optimization-level colorbar."""
+    hue_values = np.linspace(0, 0.67, n_colors)
+    sat_values = np.ones(n_colors) * 0.8
+    val_values = np.ones(n_colors) * 0.9
+    hsv = np.stack([hue_values, sat_values, val_values], axis=1)
+    rgb = hsv_to_rgb(hsv)
+    return [[i / (n_colors - 1), to_hex(rgb[i])] for i in range(n_colors)]
+
+
+def _colorbar_marker_script(mean_norm):
+    """Return JavaScript that draws the mean-optimization marker on the colorbar."""
+    mean_json = "null" if mean_norm is None else repr(float(mean_norm))
+
+    script = r"""
+(function () {
+  const gd = document.getElementById("{plot_id}");
+  if (!gd) return;
+
+  const meanOptimization = __MEAN__;
+
+  // ------------------------------------------------------------------
+  // Optimization-level marker, drawn as an SVG overlay on the actual
+  // colorbar rectangle. It is appended to the main SVG so it stays in
+  // front of the colorbar, and its width is measured from the bar.
+  // ------------------------------------------------------------------
+  function drawColorbarMarker() {
+    const colorbar = gd.querySelector(".colorbar");
+    if (!colorbar) return;
+    const main = colorbar.ownerSVGElement || gd.querySelector(".main-svg");
+    if (!main) return;
+
+    const old = gd.querySelector(".rsa-opt-marker");
+    if (old) old.remove();
+    if (meanOptimization === null || meanOptimization === undefined) return;
+
+    const background =
+      colorbar.querySelector("rect.cboutline") ||
+      colorbar.querySelector("rect.cbbg") ||
+      colorbar.querySelector("rect");
+    if (!background) return;
+
+    const rect = background.getBoundingClientRect();
+    const matrix = main.getScreenCTM();
+    if (!rect.width || !rect.height || !matrix) return;
+
+    const inverse = matrix.inverse();
+    const yPixel = rect.top + (1 - meanOptimization) * rect.height;
+    const start = main.createSVGPoint();
+    const end = main.createSVGPoint();
+    start.x = rect.left;
+    start.y = yPixel;
+    end.x = rect.left + rect.width;
+    end.y = yPixel;
+    const a = start.matrixTransform(inverse);
+    const b = end.matrixTransform(inverse);
+
+    const line = document.createElementNS(
+      "http://www.w3.org/2000/svg", "line"
+    );
+    line.setAttribute("class", "rsa-opt-marker");
+    line.setAttribute("x1", a.x);
+    line.setAttribute("x2", b.x);
+    line.setAttribute("y1", a.y);
+    line.setAttribute("y2", b.y);
+    line.setAttribute("stroke", "black");
+    line.setAttribute("stroke-width", "2.5");
+    line.setAttribute("stroke-linecap", "butt");
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    line.setAttribute("pointer-events", "none");
+    main.appendChild(line);
+  }
+
+  function scheduleColorbarMarker() {
+    window.requestAnimationFrame(drawColorbarMarker);
+  }
+
+  gd.on("plotly_afterplot", scheduleColorbarMarker);
+  window.addEventListener("resize", scheduleColorbarMarker);
+  scheduleColorbarMarker();
+})();
+"""
+    return script.replace("__MEAN__", mean_json)
+
+
+def _tree_hover_script(
+    trees,
+    actual_tree,
+    trees_trace_name,
+    actual_trace_name,
+    trees_title_prefix,
+    actual_title,
+    front_trees=None,
+    front_trace_name="Pareto front",
+    front_title_prefix="Front RSA",
+):
+    """Return JavaScript that draws tree payloads in a hover panel."""
+    tree_json = json.dumps(trees, separators=(",", ":"))
+    actual_tree_json = "null" if actual_tree is None else json.dumps(
+        actual_tree, separators=(",", ":")
+    )
+    front_trees_json = json.dumps(front_trees or [], separators=(",", ":"))
+    trees_trace_json = json.dumps(trees_trace_name)
+    actual_trace_json = json.dumps(actual_trace_name)
+    front_trace_json = json.dumps(front_trace_name)
+    trees_title_json = json.dumps(trees_title_prefix)
+    actual_title_json = json.dumps(actual_title)
+    front_title_json = json.dumps(front_title_prefix)
+
+    script = r"""
+(function () {
+  // {plot_id} is replaced by Plotly with the id of the graph div.
+  const gd = document.getElementById("{plot_id}");
+  if (!gd) return;
+
+  const trees = __TREES__;
+  const actualTree = __ACTUAL_TREE__;
+  const frontTrees = __FRONT_TREES__;
+  const treesTraceName = __TREES_TRACE__;
+  const actualTraceName = __ACTUAL_TRACE__;
+  const frontTraceName = __FRONT_TRACE__;
+  const treesTitlePrefix = __TREES_TITLE__;
+  const actualTitle = __ACTUAL_TITLE__;
+  const frontTitlePrefix = __FRONT_TITLE__;
+
+  // ------------------------------------------------------------------
+  // Left-side tree panel, shown alongside Plotly's normal hover box.
+  // The drawing mirrors visualisation.draw_tree_simple: brown branches,
+  // green base, red tips, inverted y axis and equal aspect.
+  // ------------------------------------------------------------------
+  if (!trees.length && !frontTrees.length && !actualTree) return;
+
+  const style = document.createElement("style");
+  style.textContent = `
+    #rsa-hover-tree {
+      position: fixed;
+      display: none;
+      z-index: 10000;
+      width: 180px;
+      box-sizing: border-box;
+      padding: 2px 2px 2px 2px;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid #777;
+      border-radius: 6px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+      pointer-events: none;
+      font-family: "Open Sans", verdana, arial, sans-serif;
+    }
+    #rsa-hover-tree-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #222;
+      line-height: 1.25;
+      white-space: nowrap;
+    }
+    #rsa-hover-tree-meta {
+      margin-top: 2px;
+      font-size: 11px;
+      color: #555;
+      line-height: 1.25;
+      white-space: nowrap;
+    }
+    #rsa-hover-tree-svg {
+      display: block;
+      width: 100%;
+      height: 245px;
+      margin-top: 1px;
+    }
+  `;
+  document.head.appendChild(style);
+
+  const panel = document.createElement("div");
+  panel.id = "rsa-hover-tree";
+  panel.innerHTML = `
+    <div id="rsa-hover-tree-title"></div>
+    <div id="rsa-hover-tree-meta"></div>
+    <svg id="rsa-hover-tree-svg"
+         preserveAspectRatio="xMidYMid meet"
+         xmlns="http://www.w3.org/2000/svg"></svg>
+  `;
+  document.body.appendChild(panel);
+
+  const title = panel.querySelector("#rsa-hover-tree-title");
+  const meta = panel.querySelector("#rsa-hover-tree-meta");
+  const svg = panel.querySelector("#rsa-hover-tree-svg");
+  const svgNS = "http://www.w3.org/2000/svg";
+
+  function hideTreePanel() {
+    panel.style.display = "none";
+  }
+
+  function sizePanelToTitle() {
+    const range = document.createRange();
+    range.selectNodeContents(title);
+    const textWidth = Math.ceil(range.getBoundingClientRect().width);
+    // The frame is title-width plus a small margin. Padding is intentionally
+    // tiny, so most of the width is available to the tree drawing.
+    panel.style.width = `${Math.max(120, textWidth + 22)}px`;
+  }
+
+  function drawTree(payload, titleText) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    if (!payload || !payload.p || !payload.p.length) return;
+
+    title.textContent = titleText;
+    sizePanelToTitle();
+
+    const points = payload.p;
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    for (const point of points) {
+      minX = Math.min(minX, point[0]);
+      maxX = Math.max(maxX, point[0]);
+      minY = Math.min(minY, point[1]);
+      maxY = Math.max(maxY, point[1]);
+    }
+
+    const xSpan = Math.max(maxX - minX, 1e-6);
+    const ySpan = Math.max(maxY - minY, 1e-6);
+    // Small padding on each axis: the tree should fill the frame, while
+    // keeping the same equal-aspect projection as draw_tree_simple().
+    const padX = xSpan * 0.02;
+    const padY = ySpan * 0.02;
+    const viewWidth = xSpan + 2 * padX;
+    const viewHeight = ySpan + 2 * padY;
+    svg.setAttribute(
+      "viewBox",
+      `${minX - padX} ${minY - padY} ${viewWidth} ${viewHeight}`
+    );
+
+    const edges = payload.e || [];
+    const degree = new Array(points.length).fill(0);
+
+    for (const edge of edges) {
+      const a = edge[0], b = edge[1];
+      if (!points[a] || !points[b]) continue;
+      degree[a] += 1;
+      degree[b] += 1;
+      const line = document.createElementNS(svgNS, "line");
+      line.setAttribute("x1", points[a][0]);
+      line.setAttribute("y1", points[a][1]);
+      line.setAttribute("x2", points[b][0]);
+      line.setAttribute("y2", points[b][1]);
+      line.setAttribute("stroke", "#3D2B1F");
+      line.setAttribute("stroke-width", "1.2");
+      line.setAttribute("stroke-opacity", "0.7");
+      line.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.appendChild(line);
+    }
+
+    const bounds = svg.getBoundingClientRect();
+    const scaleX = bounds.width ? bounds.width / viewWidth : 1;
+    const scaleY = bounds.height ? bounds.height / viewHeight : 1;
+    const uniformScale = Math.min(scaleX, scaleY) || 1;
+    const pixelScale = 1 / uniformScale;
+    const baseIndex = payload.b === undefined ? 0 : payload.b;
+
+    // Tips: degree-one nodes other than the base.
+    for (let i = 0; i < points.length; i += 1) {
+      if (i === baseIndex || degree[i] !== 1) continue;
+      const tip = document.createElementNS(svgNS, "circle");
+      tip.setAttribute("cx", points[i][0]);
+      tip.setAttribute("cy", points[i][1]);
+      tip.setAttribute("r", 2.3 * pixelScale);
+      tip.setAttribute("fill", "#FF0000");
+      tip.setAttribute("stroke", "black");
+      tip.setAttribute("stroke-width", "0.4");
+      tip.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.appendChild(tip);
+    }
+
+    const base = document.createElementNS(svgNS, "circle");
+    base.setAttribute("cx", points[baseIndex][0]);
+    base.setAttribute("cy", points[baseIndex][1]);
+    base.setAttribute("r", 4.5 * pixelScale);
+    base.setAttribute("fill", "#2E8B57");
+    base.setAttribute("stroke", "black");
+    base.setAttribute("stroke-width", "0.5");
+    base.setAttribute("vector-effect", "non-scaling-stroke");
+    svg.appendChild(base);
+
+    const details = [];
+    if (typeof payload.a === "number" && Number.isFinite(payload.a)) {
+      details.push(`α = ${payload.a.toFixed(3)}`);
+    }
+    if (typeof payload.r === "number" && Number.isFinite(payload.r)) {
+      details.push(`rounds = ${payload.r}`);
+    }
+    meta.textContent = details.join(" · ");
+  }
+
+  function positionTreePanel(event) {
+    const source = event && event.event ? event.event : null;
+    const width = panel.offsetWidth;
+    const height = panel.offsetHeight;
+    const gap = 20;
+    const margin = 10;
+
+    if (!source || typeof source.clientX !== "number") {
+      panel.style.left = `${margin}px`;
+      panel.style.top = "70px";
+      return;
+    }
+
+    let left = source.clientX - width - gap;
+    if (left < margin) {
+      left = Math.min(
+        source.clientX + gap,
+        window.innerWidth - width - margin
+      );
+    }
+    left = Math.max(margin, left);
+
+    let top = source.clientY - height / 2;
+    top = Math.max(
+      margin,
+      Math.min(top, window.innerHeight - height - margin)
+    );
+
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  }
+
+  gd.on("plotly_hover", function (event) {
+    const point = event.points && event.points[0];
+    if (!point || !point.data) {
+      hideTreePanel();
+      return;
+    }
+
+    let payload = null;
+    let titleText = "";
+    if (point.data.name === treesTraceName) {
+      const index = point.pointNumber;
+      payload = trees[index];
+      titleText = `${treesTitlePrefix} #${index + 1}`;
+    } else if (point.data.name === frontTraceName) {
+      const index = point.pointNumber;
+      payload = frontTrees[index];
+      titleText = `${frontTitlePrefix} #${index + 1}`;
+    } else if (point.data.name === actualTraceName) {
+      payload = actualTree;
+      titleText = actualTitle;
+    }
+
+    if (!payload) {
+      hideTreePanel();
+      return;
+    }
+    panel.style.display = "block";
+    drawTree(payload, titleText);
+    positionTreePanel(event);
+  });
+
+  gd.on("plotly_unhover", hideTreePanel);
+})();
+"""
+    return (
+        script.replace("__TREES__", tree_json)
+        .replace("__ACTUAL_TREE__", actual_tree_json)
+        .replace("__FRONT_TREES__", front_trees_json)
+        .replace("__TREES_TRACE__", trees_trace_json)
+        .replace("__ACTUAL_TRACE__", actual_trace_json)
+        .replace("__FRONT_TRACE__", front_trace_json)
+        .replace("__TREES_TITLE__", trees_title_json)
+        .replace("__ACTUAL_TITLE__", actual_title_json)
+        .replace("__FRONT_TITLE__", front_title_json)
+    )
+
+
+def _sampling_post_script(trees, actual_tree, mean_norm):
+    """Return the JavaScript that adds the colorbar marker and tree hover panel."""
+    return "\n".join(
+        [
+            _colorbar_marker_script(mean_norm),
+            _tree_hover_script(
+                trees,
+                actual_tree,
+                trees_trace_name="Samples",
+                actual_trace_name="Actual (straightened)",
+                trees_title_prefix="Sampled RSA",
+                actual_title="Actual (straightened) RSA",
+            ),
+        ]
+    )
+
+
+def save_sampling_html(result, dest, scale_factor=1.0, region_factor=0.5,
+                       unit=""):
+    """Save an interactive Plotly HTML version of the region-sampling plot.
+
+    Plotly keeps marker sizes fixed while zooming, unlike a static SVG where
+    the whole drawing scales. The data are the same as in the Matplotlib
+    version, optionally scaled to the user's unit.
+    """
+    import plotly.graph_objects as go
+
+    scale = float(scale_factor)
+    front = result["front"]
+    actual = result["actual"]
+    radius_w, radius_t = result["radius"]
+    all_points = result["all_points"]
+    max_rounds = result["max_rounds"]
+    trees = result.get("trees") or []
+    if len(trees) != len(all_points):
+        trees = []
+    actual_tree = result.get("actual_tree")
+
+    front_points = sorted(front.values(), key=lambda p: p[0])
+    front_x = [p[0] * scale for p in front_points]
+    front_y = [p[1] * scale for p in front_points]
+
+    theta = np.linspace(0, 2 * np.pi, 200)
+    ellipse_x = (actual[0] + radius_w * np.cos(theta)) * scale
+    ellipse_y = (actual[1] + radius_t * np.sin(theta)) * scale
+
+    x_label = f"Total length ({unit})" if unit else "Total length"
+    y_label = f"Travel distance ({unit})" if unit else "Travel distance"
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=front_x, y=front_y, mode="lines", name="Pareto front",
+        line=dict(color="black", width=2), hoverinfo="skip",
+    ))
+    fig.add_trace(go.Scatter(
+        x=ellipse_x, y=ellipse_y, mode="lines", name="Target region",
+        line=dict(color="red", width=2, dash="dash"), hoverinfo="skip",
+    ))
+    fig.add_trace(go.Scatter(
+        x=[actual[0] * scale], y=[actual[1] * scale], mode="markers",
+        name="Actual (straightened)",
+        marker=dict(
+            symbol="star", size=18, color="black",
+            line=dict(color="white", width=1),
+        ),
+        hovertemplate=(
+            "Actual (straightened)<br>"
+            f"Total length: {actual[0] * scale:.2f}<br>"
+            f"Travel distance: {actual[1] * scale:.2f}<extra></extra>"
+        ),
+    ))
+
+    if all_points:
+        xs = [p[0] * scale for p in all_points]
+        ys = [p[1] * scale for p in all_points]
+        rounds = [p[2] for p in all_points]
+        alphas = [p[3] for p in all_points]
+        inside = [p[4] for p in all_points]
+        norm_rounds = [r / max(max_rounds, 1) for r in rounds]
+        hover = [
+            f"Total length: {x:.2f}<br>Travel distance: {y:.2f}<br>"
+            f"Optimization rounds: {r}<br>Alpha: {a:.3f}<br>Inside: {i}"
+            for x, y, r, a, i in zip(xs, ys, rounds, alphas, inside)
+        ]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="markers", name="Samples",
+            marker=dict(
+                size=[6 + 14 * a for a in alphas],
+                color=norm_rounds,
+                colorscale=_optimization_colorscale(),
+                cmin=0,
+                cmax=1,
+                colorbar=dict(
+                    title="Optimization level<br>(0 = fully random)",
+                    x=1.02,
+                    y=0.5,
+                    len=0.75,
+                    thickness=20,
+                    xpad=0,
+                ),
+                opacity=0.7,
+                line=dict(width=0),
+            ),
+            text=hover,
+            hoverinfo="text",
+        ))
+
+    # The black marker and the left-side tree hover panel are added by the
+    # post-script below, after Plotly has laid out the colorbar in the DOM.
+    mean_norm = result.get("mean_rounds_normalized")
+
+    if result["n_inside"] > 0:
+        stats_text = (
+            f"Mean opt. level: {result['mean_rounds_normalized']:.3f} "
+            f"(CI: [{result['ci_low_normalized']:.3f}, "
+            f"{result['ci_high_normalized']:.3f}])<br>"
+            f"Mean α: {result['mean_alpha']:.3f} "
+            f"(CI: [{result['alpha_ci_low']:.3f}, "
+            f"{result['alpha_ci_high']:.3f}])<br>"
+            f"n inside: {result['n_inside']} "
+            f"(n_eff: {result['n_eff']:.1f})"
+        )
+    else:
+        stats_text = "No points inside region"
+
+    fig.add_annotation(
+        x=0.99, y=0.01, xref="paper", yref="paper",
+        text=stats_text, showarrow=False, align="right",
+        bgcolor="rgba(255,255,255,0.9)", bordercolor="gray", borderwidth=1,
+        font=dict(size=11),
+    )
+    fig.add_annotation(
+        x=0.01, y=0.99, xref="paper", yref="paper",
+        text="Point size: α value<br>(small = low α, large = high α)",
+        showarrow=False, align="left",
+        bgcolor="rgba(255,255,255,0.8)", borderpad=4,
+        font=dict(size=10),
+    )
+
+    fig.update_layout(
+        title=f"Sampling for rounds estimation (region_factor={region_factor})",
+        xaxis_title=x_label,
+        yaxis_title=y_label,
+        template="plotly_white",
+        hovermode="closest",
+        dragmode="zoom",
+        legend=dict(
+            x=0.01, y=0.88, bgcolor="rgba(255,255,255,0.8)"
+        ),
+        margin=dict(l=70, r=30, t=60, b=60),
+        autosize=True,
+    )
+    fig.update_xaxes(showgrid=True, zeroline=False)
+    fig.update_yaxes(showgrid=True, zeroline=False)
+
+    destination = Path(dest)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(
+        str(destination),
+        include_plotlyjs="directory",
+        full_html=True,
+        config={"responsive": True, "displaylogo": False, "scrollZoom": True},
+        post_script=_sampling_post_script(trees, actual_tree, mean_norm),
+        div_id="ariadne-sampling-plot",
+    )
+
+
+def estimate_rounds_for_region(G, n_samples=5000, region_factor=0.5,
+                                confidence=0.95, plot=True, verbose=True,
+                                show=True, save_path=None, front=None,
+                                actual=None, scale_factor=1.0,
+                                progress_callback=None, collect_trees=False):
+    """
+    Sample semi-random RSAs and estimate the number of optimization rounds
+    needed to reach an elliptical region around the actual (straightened) tree.
+
+    The region is an ellipse centered at the actual tree's (wiring, travel)
+    coordinates, with semi-axes proportional to the actual tree's scaling
+    distance to the front.
+
+    Inside points are weighted by proximity to the actual tree (weight 1 at
+    center, 0 at boundary). Weighted statistics are computed for both the
+    optimization rounds and the alpha values.
+
+    The Pareto front returned and plotted is refined with every sampled
+    architecture that is not dominated by the current front. The target
+    ellipse itself remains fixed, based on the original front and actual tree.
+
+    Args:
+        G: Input graph.
+        n_samples: Number of semi-random trees to generate.
+        region_factor: Semi-axis scale as a fraction of the actual's scaling
+                       distance. Default 0.5.
+        confidence: Confidence level for the interval.
+        plot: Create the sampling plot if True. A plot is also created when
+              save_path is provided, even if plot is False.
+        verbose: Print progress.
+        show: Display the plot with plt.show() if True.
+        save_path: Optional path for saving the plot (format inferred from
+                   the extension, e.g. .svg).
+        front: Optional Pareto front already computed for G. Reused to avoid
+               recomputing it.
+        actual: Optional straightened-tree reference already computed for G.
+        scale_factor: Multiplicative factor applied to plot axes only.
+        progress_callback: Optional callable(done, total, n_inside) invoked
+            periodically during semi-random tree generation.
+        collect_trees: Store a compact geometry payload for every sampled tree
+            in ``result['trees']`` and the straightened tree in
+            ``result['actual_tree']``. Used by the interactive HTML hover panel.
+
+    Returns:
+        dict with weighted stats for rounds and alpha, plus raw data.
+    """
+    H = copy.deepcopy(G)
+    for u, v in H.edges():
+        if 'weight' not in H[u][v]:
+            pos_u = H.nodes[u]['pos']
+            pos_v = H.nodes[v]['pos']
+            H[u][v]['weight'] = point_dist(np.array(pos_u), np.array(pos_v))
+
+    critical_nodes = get_critical_nodes(H)
+
+    if front is None or actual is None:
+        if verbose:
+            print("Computing Pareto front...")
+        front, actual = pareto_front_generic(
+            H, pareto_steiner_fast_analytical_preserve_tips_full_greedy
+        )
+
+    from ariadne_roots.quantify import distance_from_front
+    _, scaling_distance = distance_from_front(front, actual)
+
+    # The greedy front is only an approximation. Keep a local copy that will
+    # be refined with any non-dominated sampled architecture.
+    updated_front = {
+        float(alpha): [float(costs[0]), float(costs[1])]
+        for alpha, costs in front.items()
+    }
+
+    actual_tree = (
+        _tree_hover_payload(straighten_tree(H), None, None)
+        if collect_trees
+        else None
+    )
+
+    scaling_excess = max(0.0, (scaling_distance - 1) / scaling_distance)
+    if scaling_excess > 0:
+        radius_w = region_factor * scaling_excess * actual[0]
+        radius_t = region_factor * scaling_excess * actual[1]
+    else:
+        # Degenerate ellipse if the actual tree lies on the front; use a tiny
+        # non-zero radius so the normalized distance remains defined.
+        radius_w = max(abs(actual[0]) * 1e-6, 1e-9)
+        radius_t = max(abs(actual[1]) * 1e-6, 1e-9)
+        if verbose:
+            print("Warning: actual tree lies on the front; using a tiny region.")
+
+    if verbose:
+        print(f"Actual tree: wiring={actual[0]:.1f}, travel={actual[1]:.1f}")
+        print(f"Scaling distance to front: {scaling_distance:.4f}")
+        print(f"Ellipse radii: ({radius_w:.4f}, {radius_t:.4f})")
+
+    max_rounds = len(critical_nodes) - 1
+
+    if verbose:
+        print(f"Max rounds: {max_rounds}")
+        print(f"Generating {n_samples} semi-random trees...")
+
+    all_points = []
+    inside_data = []  # (rounds, alpha, weight)
+    trees = []
+
+    report_every = max(1, n_samples // 100)
+    for i in range(n_samples):
+        alpha = np.random.uniform(0, 1)
+        rounds = np.random.randint(0, max_rounds + 1)
+
+        tree = pareto_steiner_fast_analytical_preserve_tips_semi_random(
+            H, alpha=alpha, optimization_rounds=rounds
+        )
+
+        if tree is not None:
+            w, t = graph_costs(tree, critical_nodes=critical_nodes)
+
+            # Incorporate non-dominated samples into the plotted front.
+            is_dominated = any(
+                fw <= w and ft <= t and (fw < w or ft < t)
+                for fw, ft in updated_front.values()
+            )
+            if not is_dominated:
+                dominated_keys = [
+                    key
+                    for key, (fw, ft) in updated_front.items()
+                    if w <= fw and t <= ft and (w < fw or t < ft)
+                ]
+                for key in dominated_keys:
+                    del updated_front[key]
+
+                is_duplicate = any(
+                    fw == w and ft == t
+                    for fw, ft in updated_front.values()
+                )
+                if not is_duplicate:
+                    key = float(alpha)
+                    while key in updated_front:
+                        key += 1e-12
+                    updated_front[key] = [float(w), float(t)]
+
+            d_norm = np.sqrt(((w - actual[0]) / radius_w) ** 2 +
+                             ((t - actual[1]) / radius_t) ** 2)
+            inside = d_norm <= 1
+            weight = max(0.0, 1.0 - d_norm)
+
+            all_points.append((w, t, rounds, alpha, inside))
+
+            if collect_trees:
+                trees.append(_tree_hover_payload(tree, rounds, alpha))
+
+            if inside:
+                inside_data.append((rounds, alpha, weight))
+
+        if progress_callback is not None and (
+            (i + 1) % report_every == 0 or i + 1 == n_samples
+        ):
+            progress_callback(i + 1, n_samples, len(inside_data))
+
+        if verbose and (i + 1) % 500 == 0:
+            print(f"  {i + 1}/{n_samples}, inside: {len(inside_data)}")
+
+    if verbose:
+        print(f"\nTotal inside region: {len(inside_data)}")
+
+    if len(inside_data) == 0:
+        result = {
+            'n_inside': 0,
+            'mean_rounds': None, 'ci_low': None, 'ci_high': None,
+            'mean_rounds_normalized': None,
+            'ci_low_normalized': None, 'ci_high_normalized': None,
+            'mean_alpha': None, 'alpha_ci_low': None, 'alpha_ci_high': None,
+            'all_points': all_points, 'actual': actual, 'front': updated_front,
+            'scaling_distance': scaling_distance,
+            'radius': (radius_w, radius_t),
+            'max_rounds': max_rounds,
+            'trees': trees,
+            'actual_tree': actual_tree,
+        }
+    else:
+        from scipy import stats
+
+        rounds_arr = np.array([d[0] for d in inside_data])
+        alphas_arr = np.array([d[1] for d in inside_data])
+        weights_arr = np.array([d[2] for d in inside_data])
+
+        total_weight = np.sum(weights_arr)
+        # Effective sample size (Kish's formula)
+        n_eff = total_weight ** 2 / np.sum(weights_arr ** 2)
+
+        # Weighted mean helper
+        def weighted_mean(values):
+            return np.sum(weights_arr * values) / total_weight
+
+        # Weighted std (reliability weights)
+        def weighted_std(values, mean_val):
+            var = np.sum(weights_arr * (values - mean_val) ** 2) / total_weight
+            return np.sqrt(var)
+
+        # Weighted CI helper
+        def weighted_ci(values):
+            mean_val = weighted_mean(values)
+            std_val = weighted_std(values, mean_val)
+            if n_eff > 1:
+                sem = std_val / np.sqrt(n_eff)
+                t_crit = stats.t.ppf((1 + confidence) / 2, df=n_eff - 1)
+                return mean_val, mean_val - t_crit * sem, mean_val + t_crit * sem
+            else:
+                return mean_val, mean_val, mean_val
+
+        mean_rounds, ci_low, ci_high = weighted_ci(rounds_arr)
+        mean_alpha, alpha_ci_low, alpha_ci_high = weighted_ci(alphas_arr)
+
+        result = {
+            'n_inside': len(inside_data),
+            'n_eff': n_eff,
+            'mean_rounds': mean_rounds,
+            'ci_low': ci_low,
+            'ci_high': ci_high,
+            'mean_rounds_normalized': mean_rounds / max_rounds,
+            'ci_low_normalized': ci_low / max_rounds,
+            'ci_high_normalized': ci_high / max_rounds,
+            'mean_alpha': mean_alpha,
+            'alpha_ci_low': alpha_ci_low,
+            'alpha_ci_high': alpha_ci_high,
+            'all_points': all_points,
+            'actual': actual,
+            'front': updated_front,
+            'scaling_distance': scaling_distance,
+            'radius': (radius_w, radius_t),
+            'max_rounds': max_rounds,
+            'trees': trees,
+            'actual_tree': actual_tree,
+        }
+
+        if verbose:
+            print(f"\nWeighted results (n_inside={len(inside_data)}, "
+                  f"n_eff={n_eff:.1f}):")
+            print(f"  Mean rounds: {mean_rounds:.2f} "
+                  f"(normalized: {mean_rounds / max_rounds:.3f})")
+            print(f"  {confidence*100:.0f}% CI: [{ci_low:.2f}, {ci_high:.2f}] "
+                  f"(normalized: [{ci_low / max_rounds:.3f}, "
+                  f"{ci_high / max_rounds:.3f}])")
+            print(f"  Mean alpha: {mean_alpha:.3f}")
+            print(f"  {confidence*100:.0f}% CI: [{alpha_ci_low:.3f}, "
+                  f"{alpha_ci_high:.3f}]")
+
+    if plot or save_path is not None:
+        fig, ax = plt.subplots(figsize=(12, 9))
+
+        # Plot-only scaling; raw values stay in the returned statistics.
+        def plot_scale(value):
+            return value * scale_factor
+
+        # Pareto front (refined with non-dominated samples)
+        front_points = sorted(updated_front.values(), key=lambda p: p[0])
+        fx = [plot_scale(p[0]) for p in front_points]
+        fy = [plot_scale(p[1]) for p in front_points]
+        ax.plot(fx, fy, '-', color='black', linewidth=2,
+                label='Pareto Front', zorder=3)
+
+        # Ellipse around actual tree
+        theta = np.linspace(0, 2 * np.pi, 200)
+        cx = plot_scale(actual[0]) + plot_scale(radius_w) * np.cos(theta)
+        cy = plot_scale(actual[1]) + plot_scale(radius_t) * np.sin(theta)
+        ax.plot(cx, cy, '--', color='red', linewidth=2,
+                label='Target region', zorder=2)
+
+        # Actual tree
+        ax.scatter(plot_scale(actual[0]), plot_scale(actual[1]),
+                   marker='*', color='black', s=250,
+                   zorder=6, label='Actual (straightened)', edgecolors='white')
+
+        # All points, colored by optimization level, sized by alpha
+        if all_points:
+            pts_rounds = np.array([p[2] for p in all_points])
+            pts_alphas = np.array([p[3] for p in all_points])
+            pts_x = [plot_scale(p[0]) for p in all_points]
+            pts_y = [plot_scale(p[1]) for p in all_points]
+
+            norm_rounds = pts_rounds / max(max_rounds, 1)
+            hue = 0.67 * norm_rounds
+            saturation = np.ones_like(hue) * 0.8
+            value = np.ones_like(hue) * 0.9
+            colors_hsv = np.stack([hue, saturation, value], axis=1)
+            colors_rgb = hsv_to_rgb(colors_hsv)
+            point_sizes = 10 + 70 * pts_alphas
+
+            ax.scatter(pts_x, pts_y, c=colors_rgb, s=point_sizes, zorder=1,
+                       edgecolors='none', alpha=0.7, label='Samples')
+
+        ax.set_xlabel("Total length", fontsize=13)
+        ax.set_ylabel("Travel distance", fontsize=13)
+        ax.set_title(f"Sampling for rounds estimation "
+                     f"(region_factor={region_factor})", fontsize=14)
+        ax.legend(loc='best', fontsize=10)
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        # Vector colorbar for optimization level. Drawing the gradient as
+        # rectangles keeps the saved SVG fully vector (no embedded PNG).
+        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.3])
+        n_colors = 256
+        hue_values = np.linspace(0, 0.67, n_colors)
+        sat_values = np.ones(n_colors) * 0.8
+        val_values = np.ones(n_colors) * 0.9
+        hsv_cmap = np.stack([hue_values, sat_values, val_values], axis=1)
+        rgb_cmap = hsv_to_rgb(hsv_cmap)
+        cmap = LinearSegmentedColormap.from_list('rand_cmap', rgb_cmap)
+
+        n_steps = 256
+        for i in range(n_steps):
+            cbar_ax.add_patch(
+                Rectangle(
+                    (0, i / n_steps),
+                    1,
+                    1 / n_steps,
+                    facecolor=cmap(i / (n_steps - 1)),
+                    edgecolor='none',
+                    linewidth=0,
+                )
+            )
+        cbar_ax.set_xlim(0, 1)
+        cbar_ax.set_ylim(0, 1)
+        cbar_ax.set_xticks([])
+        cbar_ax.set_yticks([])
+        for spine in cbar_ax.spines.values():
+            spine.set_visible(False)
+        cbar_ax.yaxis.set_label_position('right')
+        cbar_ax.set_ylabel(
+            'Optimization level\n(0 = fully random)',
+            fontsize=9,
+            rotation=90,
+            labelpad=8,
+        )
+
+        # Horizontal bar at mean optimization level
+        if len(inside_data) > 0:
+            mean_pct = result['mean_rounds'] / max_rounds
+            cbar_ax.axhline(
+                y=mean_pct, color='black', linewidth=2.5, xmin=0, xmax=1
+            )
+
+        # Size legend note
+        ax.text(0.02, 0.98, 'Point size: α value\n(small = low α, large = high α)',
+                transform=ax.transAxes, fontsize=9, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+        # Statistics text box
+        if len(inside_data) > 0:
+            stats_text = (
+                f"Mean opt. level: {result['mean_rounds_normalized']:.3f} "
+                f"(CI: [{result['ci_low_normalized']:.3f}, "
+                f"{result['ci_high_normalized']:.3f}])\n"
+                f"Mean α: {result['mean_alpha']:.3f} "
+                f"(CI: [{result['alpha_ci_low']:.3f}, "
+                f"{result['alpha_ci_high']:.3f}])\n"
+                f"n inside: {result['n_inside']} "
+                f"(n_eff: {result['n_eff']:.1f})"
+            )
+        else:
+            stats_text = "No points inside region"
+
+        ax.text(0.98, 0.02, stats_text, transform=ax.transAxes,
+                fontsize=10, verticalalignment='bottom', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.85,
+                          edgecolor='gray'))
+
+        if save_path is not None:
+            fig.savefig(save_path, bbox_inches="tight")
+        if show:
+            plt.show()
+        plt.close(fig)
+
+    return result

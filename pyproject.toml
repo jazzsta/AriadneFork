@@ -4,11 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ariadne-roots"
-version = "0.2.0a1"
+version = "2.0"
 authors = [
   { name="Matthieu Platre", email="mattplatre@gmail.com" },
   { name="Kian Faizi", email="kian@caltech.edu" },
   { name="Elizabeth Berrigan", email="eberrigan@salk.edu" },
+  { name="Stathis Delivorias" },	
 ]
 description = "Ariadne root tracing GUI and trait calculator."
 readme = "README.md"
@@ -26,6 +27,7 @@ dependencies = [
   "numpy",
   "scipy",
   "matplotlib",
+  "plotly",
 ]
 
 # ---- uv dev group for contributors/CI ----

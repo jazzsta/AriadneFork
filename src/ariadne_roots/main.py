@@ -11,15 +11,18 @@ easier selection of nearby points
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 import csv
 import copy
+import gc
 import networkx as nx
 import json
 import logging
+import threading
+import time
 
 from pathlib import Path
-from queue import Queue
+from queue import Queue, Empty
 from collections import deque
 from PIL import Image, ImageTk, ImageSequence
 from datetime import datetime
@@ -999,24 +1002,6 @@ class Tree:
 
 
 # Helper functions
-def get_graph_from_json(json_file):
-    """Load a JSON file and convert it to a NetworkX graph.
-
-    Args:
-        json_file (str): Path to the JSON file.
-
-    Returns:
-        nx.Graph: A NetworkX graph object.
-    """
-    with open(json_file, mode="r") as h:
-        data = json.load(h)
-        graph = json_graph.adjacency_graph(data)
-
-        # Convert to undirected if needed
-    if graph.is_directed():
-        graph = graph.to_undirected()
-
-    return graph
 
 
 class AnalyzerUI(tk.Frame):
@@ -1032,6 +1017,11 @@ class AnalyzerUI(tk.Frame):
         self.length_scale_factor = 1.0
         self.length_scale_unit = "px"
 
+        # Region-classification defaults (estimate_rounds_for_region)
+        self.n_samples = 5000
+        self.region_factor = 0.5
+        self.run_classification = True
+
         # master frame
         self.frame = tk.Frame(self.base)
         self.frame.pack(side="top", fill="both", expand=True)
@@ -1046,6 +1036,11 @@ class AnalyzerUI(tk.Frame):
         )
         self.load_button.pack(side="top", pady=20, padx=10)
 
+        self.settings_button = tk.Button(
+            self.left_frame, text="Analysis settings", command=self.ask_scale
+        )
+        self.settings_button.pack(side="top", pady=5, padx=10)
+
         # right-hand output
         self.right_frame = tk.Frame(self.frame)
         self.right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
@@ -1057,27 +1052,39 @@ class AnalyzerUI(tk.Frame):
         self.output.pack(side="top", fill="both", expand=True)
 
         # Ask user for scale info at startup
-        self.ask_scale()
+        self.ask_scale(initial=True)
 
-    def ask_scale(self):
-        """Pop up window to set scale before analysis."""
+    def ask_scale(self, initial=False):
+        """Pop up window to set scale and analysis parameters.
+
+        Args:
+            initial: True for the startup dialog. On cancel, the startup dialog
+                restores defaults; the settings dialog leaves current values
+                unchanged.
+        """
         # Create custom popup window
         scale_win = tk.Toplevel(self.base)
-        scale_win.title("Set Scale")
-        scale_win.geometry("350x420")
+        scale_win.title("Set Scale" if initial else "Analysis Settings")
+        scale_win.geometry("350x610")
         scale_win.grab_set()  # make popup modal
 
         # Labels + Entries
         tk.Label(scale_win, text="1) Distance in pixels:").pack(pady=5)
         pixels_entry = tk.Entry(scale_win)
+        if not initial:
+            pixels_entry.insert(0, "1")
         pixels_entry.pack(pady=5)
 
         tk.Label(scale_win, text="2) Distance in (real units):").pack(pady=5)
         real_entry = tk.Entry(scale_win)
+        if not initial:
+            real_entry.insert(0, f"{self.length_scale_factor:g}")
         real_entry.pack(pady=5)
 
         tk.Label(scale_win, text="3) Unit of length (e.g., mm, cm):").pack(pady=5)
         unit_entry = tk.Entry(scale_win)
+        if not initial:
+            unit_entry.insert(0, self.length_scale_unit)
         unit_entry.pack(pady=5)
 
         # Label to show calculated scale
@@ -1088,12 +1095,37 @@ class AnalyzerUI(tk.Frame):
         tk.Frame(scale_win, height=1, bg="gray").pack(fill="x", padx=20, pady=5)
 
         # 3D analysis checkbox (optional, slower)
-        enable_3d_var = tk.BooleanVar(value=False)
+        enable_3d_var = tk.BooleanVar(
+            value=getattr(self, "enable_3d_analysis", False)
+        )
         tk.Checkbutton(
             scale_win,
             text="Add path tortuosity to Pareto (3D, slower)",
             variable=enable_3d_var,
         ).pack(pady=5)
+
+        # Region classification controls (2D sampling). Classification is
+        # optional so the report can keep the original Ariadne 1.0 columns.
+        run_classification_var = tk.BooleanVar(
+            value=getattr(self, "run_classification", True)
+        )
+        tk.Checkbutton(
+            scale_win,
+            text="4) Run region classification (adds report columns)",
+            variable=run_classification_var,
+        ).pack(pady=5)
+
+        tk.Label(
+            scale_win, text="5) Classification samples (default 5000):"
+        ).pack(pady=5)
+        samples_entry = tk.Entry(scale_win)
+        samples_entry.insert(0, str(self.n_samples))
+        samples_entry.pack(pady=5)
+
+        tk.Label(scale_win, text="6) Region factor (default 0.5):").pack(pady=5)
+        region_entry = tk.Entry(scale_win)
+        region_entry.insert(0, str(self.region_factor))
+        region_entry.pack(pady=5)
 
         def update_result(*args):
             """Update live result when values change."""
@@ -1114,15 +1146,20 @@ class AnalyzerUI(tk.Frame):
         pixels_entry.bind("<KeyRelease>", update_result)
         real_entry.bind("<KeyRelease>", update_result)
         unit_entry.bind("<KeyRelease>", update_result)
+        update_result()
 
         def submit_scale():
             try:
                 pixels = float(pixels_entry.get())
                 real_dist = float(real_entry.get())
                 unit = unit_entry.get().strip()
+                n_samples = int(float(samples_entry.get()))
+                region_factor = float(region_entry.get())
 
                 if pixels <= 0 or real_dist <= 0 or unit == "":
                     raise ValueError("Invalid values provided.")
+                if n_samples <= 0 or region_factor <= 0:
+                    raise ValueError("Invalid sampling values provided.")
 
                 # Store scale factors as instance variables (for immediate use)
                 self.length_scale_factor = real_dist / pixels
@@ -1136,8 +1173,13 @@ class AnalyzerUI(tk.Frame):
                 self.enable_3d_analysis = enable_3d_var.get()
                 config.enable_3d_analysis = self.enable_3d_analysis
 
+                # Store region-classification settings
+                self.n_samples = n_samples
+                self.region_factor = region_factor
+                self.run_classification = run_classification_var.get()
+
                 messagebox.showinfo(
-                    "Scale set",
+                    "Settings updated" if not initial else "Scale set",
                     f"1 pixel = {self.length_scale_factor:.4f} {self.length_scale_unit}",
                 )
                 scale_win.destroy()
@@ -1145,20 +1187,26 @@ class AnalyzerUI(tk.Frame):
             except ValueError:
                 messagebox.showerror(
                     "Error",
-                    "Please enter positive numeric values for both distances and a non-empty unit.",
+                    "Please enter positive numeric values for both distances, "
+                    "a non-empty unit, a positive sample count, and a positive "
+                    "region factor.",
                 )
 
         def cancel_scale():
-            """Cancel and use default scaling (1.0 px)."""
-            # Set defaults
-            self.length_scale_factor = 1.0
-            self.length_scale_unit = "px"
-            self.enable_3d_analysis = False
+            """Cancel the dialog."""
+            if initial:
+                # Startup cancel: restore the documented defaults.
+                self.length_scale_factor = 1.0
+                self.length_scale_unit = "px"
+                self.enable_3d_analysis = False
+                self.n_samples = 5000
+                self.region_factor = 0.5
+                self.run_classification = True
 
-            # Store in config module
-            config.length_scale_factor = 1.0
-            config.length_scale_unit = "px"
-            config.enable_3d_analysis = False
+                # Store in config module
+                config.length_scale_factor = 1.0
+                config.length_scale_unit = "px"
+                config.enable_3d_analysis = False
 
             scale_win.destroy()
 
@@ -1176,6 +1224,192 @@ class AnalyzerUI(tk.Frame):
 
         # Center popup and block main window until closed
         self.base.wait_window(scale_win)
+
+    def _create_loading_window(self):
+        """Create the progress window used during analysis."""
+        self.loading_win = tk.Toplevel(self.base)
+        self.loading_win.title("Analyzing...")
+        self.loading_win.geometry("460x210")
+        self.loading_win.transient(self.base)
+        self.loading_win.resizable(False, False)
+        self.loading_win.protocol("WM_DELETE_WINDOW", self._close_loading_window)
+
+        self.loading_file_label = tk.Label(
+            self.loading_win,
+            text="Preparing analysis...",
+            anchor="w",
+            justify="left",
+            wraplength=430,
+        )
+        self.loading_file_label.pack(fill="x", padx=15, pady=(15, 5))
+
+        self.loading_detail_label = tk.Label(
+            self.loading_win,
+            text="",
+            anchor="w",
+            justify="left",
+            wraplength=430,
+        )
+        self.loading_detail_label.pack(fill="x", padx=15, pady=5)
+
+        self.loading_bar = ttk.Progressbar(
+            self.loading_win,
+            orient="horizontal",
+            mode="determinate",
+            maximum=100,
+            length=430,
+        )
+        self.loading_bar.pack(fill="x", padx=15, pady=5)
+
+        self.loading_pct_label = tk.Label(self.loading_win, text="0%")
+        self.loading_pct_label.pack(pady=(0, 10))
+
+        self.loading_win.update_idletasks()
+        self.loading_win.lift()
+
+    def _start_file_progress(self, plant_number, total_plants, filename):
+        """Reset the progress window for the next input file."""
+        if not hasattr(self, "loading_win") or not self.loading_win.winfo_exists():
+            self._create_loading_window()
+
+        if total_plants > 1:
+            text = f"Plant {plant_number} of {total_plants}: {filename}"
+        else:
+            text = f"Analyzing: {filename}"
+
+        self.loading_file_label.config(text=text)
+        self.loading_detail_label.config(text="Computing Pareto front...")
+        self.loading_bar.stop()
+        self.loading_bar.config(mode="determinate")
+        self.loading_bar["value"] = 0
+        self.loading_pct_label.config(text="0%")
+        self.loading_win.update_idletasks()
+
+    def _update_sampling_progress(self, done, total, n_inside):
+        """Update the progress bar during semi-random tree generation."""
+        if not hasattr(self, "loading_win") or not self.loading_win.winfo_exists():
+            return
+
+        pct = int(round(100 * done / total)) if total else 100
+        self.loading_detail_label.config(
+            text=(
+                f"Semi-random trees: {done}/{total} "
+                f"— inside region: {n_inside}"
+            )
+        )
+
+        self.loading_bar["value"] = pct
+        self.loading_pct_label.config(text=f"{pct}%")
+
+        self.loading_win.update_idletasks()
+
+    def _finish_file_progress(self):
+        """Mark the current file's progress as complete."""
+        if not hasattr(self, "loading_win") or not self.loading_win.winfo_exists():
+            return
+        self.loading_detail_label.config(text="Saving outputs...")
+        self.loading_bar["value"] = 100
+        self.loading_pct_label.config(text="100%")
+        self.loading_win.update_idletasks()
+
+    def _close_loading_window(self):
+        """Close the progress window if it exists."""
+        if hasattr(self, "loading_win") and self.loading_win.winfo_exists():
+            self.loading_win.destroy()
+
+    def _loading_alive(self):
+        """Return True while the progress window exists."""
+        return (
+            hasattr(self, "loading_win")
+            and self.loading_win.winfo_exists()
+        )
+
+    def _drain_progress_queue(self, progress_queue):
+        """Apply queued sampling progress updates on the Tk main thread."""
+        while True:
+            try:
+                done, total, n_inside = progress_queue.get_nowait()
+            except Empty:
+                break
+            self._update_sampling_progress(done, total, n_inside)
+
+    def _run_in_background(
+        self,
+        func,
+        *args,
+        phase_label=None,
+        indeterminate=False,
+        uses_progress=False,
+        **kwargs,
+    ):
+        """Run a CPU-heavy analysis function without blocking Tk.
+
+        The worker thread must not touch Tk widgets. Progress callbacks are
+        placed on a queue and applied by the main thread while it pumps events.
+        """
+        if self._loading_alive():
+            if phase_label is not None:
+                self.loading_detail_label.config(text=phase_label)
+            if indeterminate:
+                self.loading_bar.stop()
+                self.loading_bar.config(mode="indeterminate")
+                self.loading_bar.start(15)
+            else:
+                self.loading_bar.stop()
+                self.loading_bar.config(mode="determinate")
+                self.loading_bar["value"] = 0
+                self.loading_pct_label.config(text="0%")
+            self.loading_win.update_idletasks()
+
+        result = {}
+        error = {}
+        progress_queue = Queue()
+
+        def worker():
+            call_kwargs = dict(kwargs)
+            if uses_progress:
+                call_kwargs["progress_callback"] = (
+                    lambda *values: progress_queue.put(values)
+                )
+            try:
+                result["value"] = func(*args, **call_kwargs)
+            except Exception as exc:  # re-raised on the Tk thread
+                error["value"] = exc
+
+        # Tk objects must only be finalized on the Tk main thread. The worker
+        # allocates heavily, which can trigger Python's cyclic GC there and
+        # finalize unreachable Tk images/variables from the GUI thread. Freeze
+        # the existing object graph while the worker runs, then unfreeze and
+        # collect on the main thread after the worker has finished.
+        gc.collect()
+        gc.freeze()
+        thread = None
+        try:
+            thread = threading.Thread(target=worker, daemon=True)
+            thread.start()
+
+            while thread.is_alive():
+                self._drain_progress_queue(progress_queue)
+                self.base.update()
+                time.sleep(0.05)
+
+            self._drain_progress_queue(progress_queue)
+            self.base.update()
+        finally:
+            if thread is not None and thread.is_alive():
+                thread.join()
+            gc.unfreeze()
+            gc.collect()
+
+        if self._loading_alive():
+            if indeterminate:
+                self.loading_bar.stop()
+                self.loading_bar.config(mode="determinate")
+            self.loading_win.update_idletasks()
+
+        if "value" in error:
+            raise error["value"]
+        return result.get("value")
 
     def import_file(self):
         """Load input files."""
@@ -1220,8 +1454,9 @@ class AnalyzerUI(tk.Frame):
             / f"report_3d_{str(timestamp.strftime('%Y%m%d_%H%M%S'))}.csv"
         )
 
-        # Disable button during analysis to prevent re-clicks and rendering issues
+        # Disable buttons during analysis to prevent re-clicks and rendering issues
         self.load_button.config(state="disabled")
+        self.settings_button.config(state="disabled")
 
         # Show analyzing status immediately
         self.output_info = f"Analyzing {len(self.tree_paths)} file(s)..."
@@ -1230,13 +1465,15 @@ class AnalyzerUI(tk.Frame):
         i = 1
 
         for json_file in self.tree_paths:
-            graph_name = json_file.split("/")[-1]
-            graph_name_noext = graph_name[:-5]
+            graph_name = Path(json_file).name
+            graph_name_noext = Path(graph_name).stem
             pareto_name = graph_name_noext + "_pareto.png"
             pareto_3d_name = graph_name_noext + "_pareto_3d.png"
+            sampling_name = graph_name_noext + "_sampling.html"
 
             pareto_path = self.output_path / pareto_name
             pareto_3d_path = self.output_path / pareto_3d_name
+            sampling_path = self.output_path / sampling_name
 
             # update current file count list
             self.output_info = self.output_info + "\n" + graph_name
@@ -1261,14 +1498,73 @@ class AnalyzerUI(tk.Frame):
                         "Test fixture files (test_*.json) are for unit testing only."
                     )
                     messagebox.showerror("Invalid File Format", error_msg)
+                    self._close_loading_window()
+                    self.load_button.config(state="normal")
+                    self.settings_button.config(state="normal")
                     return
 
                 graph = json_graph.adjacency_graph(data)
 
-            # perform analysis
-            results, front, randoms, results_3d, front_3d, randoms_3d = (
-                quantify.analyze(graph, enable_3d=config.enable_3d_analysis)
-            )
+            self._start_file_progress(i, len(self.tree_paths), graph_name)
+
+            # Compact tree geometries for the interactive HTML hover panel.
+            hover_trees = {}
+
+            # perform analysis in the background so Tk stays responsive
+            try:
+                results, front, randoms, results_3d, front_3d, randoms_3d = (
+                    self._run_in_background(
+                        quantify.analyze,
+                        graph,
+                        enable_3d=config.enable_3d_analysis,
+                        n_random=500,
+                        tree_payloads=hover_trees,
+                        phase_label="Computing Pareto front...",
+                        indeterminate=True,
+                    )
+                )
+            except Exception:
+                logging.exception("Analysis failed for %s", graph_name)
+                messagebox.showerror(
+                    "Analysis failed",
+                    f"Could not analyze {graph_name}.\n\n"
+                    "See the console/log for details.",
+                )
+                self._close_loading_window()
+                self.load_button.config(state="normal")
+                self.settings_button.config(state="normal")
+                return
+
+            # Local region classification (2D only). Reuses the front and the
+            # straightened-tree reference already computed by analyze().
+            # It is optional so the report can keep the Ariadne 1.0 columns.
+            if getattr(self, "run_classification", True):
+                try:
+                    sampling_results = self._run_in_background(
+                        quantify.classify_region,
+                        graph.to_undirected(),
+                        front,
+                        [results["Total root length"], results["Travel distance"]],
+                        n_samples=self.n_samples,
+                        region_factor=self.region_factor,
+                        save_html_path=sampling_path,
+                        scale_factor=self.length_scale_factor,
+                        unit=self.length_scale_unit,
+                        verbose=False,
+                        phase_label="Generating semi-random trees...",
+                        indeterminate=False,
+                        uses_progress=True,
+                    )
+                except Exception:
+                    logging.exception(
+                        "Region classification failed for %s", graph_name
+                    )
+                    sampling_results = {
+                        field: None
+                        for field in quantify.REGION_CLASSIFICATION_FIELDS
+                    }
+                results.update(sampling_results)
+
             results["filename"] = graph_name_noext
             if config.enable_3d_analysis:
                 results_3d["filename"] = graph_name_noext
@@ -1308,6 +1604,8 @@ class AnalyzerUI(tk.Frame):
                         w.writeheader()
                     w.writerow(scaled_results_3d)
 
+            self._finish_file_progress()
+
             # make pareto plot and save
             quantify.plot_all(
                 front,
@@ -1316,6 +1614,7 @@ class AnalyzerUI(tk.Frame):
                 results["Total root length (random)"],
                 results["Travel distance (random)"],
                 pareto_path,
+                hover_trees=hover_trees,
             )
 
             # make 3D pareto plot and save (only when enabled)
@@ -1337,6 +1636,11 @@ class AnalyzerUI(tk.Frame):
             print(f"Processed file {i}/{len(self.tree_paths)}")
             i += 1
 
+        # Close the progress window and re-enable buttons
+        self._close_loading_window()
+        self.load_button.config(state="normal")
+        self.settings_button.config(state="normal")
+
         # show confirmation message
         print("Finished.")
 
@@ -1347,13 +1651,12 @@ class AnalyzerUI(tk.Frame):
             f"Output folder: {self.output_path}\n\n"
             f"Generated files:\n"
             f"  • CSV report: {report_dest.name}\n"
-            f"  • Pareto plots: {len(self.tree_paths)} PNG file(s)\n\n"
+            f"  • Pareto plots: {len(self.tree_paths)} set(s) of PNG/SVG/HTML\n"
+            f"  • Sampling plots: {len(self.tree_paths)} HTML file(s)\n"
+            f"  • Interactive plots use the shared plotly.min.js in this folder\n\n"
             f"You can now open the output folder to view results."
         )
         messagebox.showinfo("Analysis Complete", completion_msg)
-
-        # Re-enable button after analysis
-        self.load_button.config(state="normal")
 
     def clear(self):
         """Clean up a previously imported file."""

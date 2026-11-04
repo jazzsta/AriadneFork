@@ -71,6 +71,7 @@ def apply_scaling_transformation(results, scale_factor, excluded_fields=None):
             "scaling distance to front",
             "Tortuosity",
             "scaling (random)",
+            "normalized",  # mean_rounds_normalized, ci_low/high_normalized
             # Tradeoff metrics (dimensionless ratios)
             "Tradeoff",
             "Actual_ratio",
