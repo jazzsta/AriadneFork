@@ -70,8 +70,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne"
-Issues = "https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/issues"
+Homepage = "https://github.com/jazzsta/AriadneFork"
+Issues = "https://github.com/jazzsta/AriadneFork/issues"
 
 [project.scripts]
 ariadne-trace = "ariadne_roots.main:main"

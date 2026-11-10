@@ -1,7 +1,7 @@
 # Ariadne 0.3
 
 [![Stable version](https://img.shields.io/pypi/v/ariadne-roots?label=stable "Stable version")](https://pypi.org/project/ariadne-roots/)
-[![Latest pre-release](https://img.shields.io/github/v/release/Salk-Harnessing-Plants-Initiative/Ariadne?include_prereleases&label=pre-release)](https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/releases)
+[![Latest pre-release](https://img.shields.io/github/v/release/jazzsta/AriadneFork?include_prereleases&label=pre-release)](https://github.com/jazzsta/AriadneFork/releases)
 
 **Current development version:** `0.3`
 
@@ -9,11 +9,11 @@
 
 📷 It features a GUI for semi-automated image segmentation
 
-<img src="assets/color-final.gif" width="250" height="250">
+<img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3/assets/color-final.gif" width="250" height="250">
 
 ⏰ with support for time-series GIFs
 
-<img src="assets/early-final.gif" width="250" height="250">
+<img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3/assets/early-final.gif" width="250" height="250">
 
 ☠️ that creates dynamic 2D skeleton graphs of the root system architecture (RSA).
 
@@ -31,16 +31,16 @@
 
 | Document | Description                                                                     |
 |----------|---------------------------------------------------------------------------------|
-| [Scientific Methods](docs/scientific-methods.md) | Pareto optimality calculations, mathematical formulas, and academic references  |
-| [Output Fields Reference](docs/output-fields.md) | Complete reference for all CSV output fields with units and interpretation      |
-| [Ariadne 0.3 Research Notebook](Ariadne0.3_Exploration.ipynb) | Reproducible pareto fronts, random null models and sampling figures |
+| [Scientific Methods](https://github.com/jazzsta/AriadneFork/blob/v0.3/docs/scientific-methods.md) | Pareto optimality calculations, mathematical formulas, and academic references  |
+| [Output Fields Reference](https://github.com/jazzsta/AriadneFork/blob/v0.3/docs/output-fields.md) | Complete reference for all CSV output fields with units and interpretation      |
+| [Ariadne 0.3 Research Notebook](https://github.com/jazzsta/AriadneFork/blob/v0.3/Ariadne0.3_Exploration.ipynb) | Reproducible pareto fronts, random null models and sampling figures |
 
-For citing the underlying methods, see the [References](#references) section or the [Scientific Methods](docs/scientific-methods.md) documentation.
+For citing the underlying methods, see the [References](#references) section or the [Scientific Methods](https://github.com/jazzsta/AriadneFork/blob/v0.3/docs/scientific-methods.md) documentation.
 
 ## Installation
 
 Ariadne is installed as a Python package called `ariadne-roots`. We recommend using a package manager and creating an isolated environment for `ariadne-roots` and its dependencies.
-You can find the latest version of `ariadne-roots` on the [Releases](https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/releases) page.
+You can find the latest version of `ariadne-roots` on the [Releases](https://github.com/jazzsta/AriadneFork/releases) page.
 
 > **Version note:** the repository contains the Ariadne **0.3** development line. The PyPI commands below install the latest published release, which may be older. To use the 0.3 code, clone the repository and use the development workflow with `uv sync` described below.
 
@@ -194,7 +194,7 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
 1. **Click on “Trace”** to trace roots.
 2. The following window should open:
 
-    <img src="assets/Trace_Menu.png" width="450" height="450">
+    <img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3/assets/Trace_Menu.png" width="450" height="450">
 
 3. **Click on “Import image file”** and select the image to trace the roots.
 4. **Select the zoom factor for your image** 
@@ -229,7 +229,7 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
 3. **Run the analysis:**
     - Click on "Analyze" in Ariadne.
 
-    <img src="assets/Welcome.png" width="400" height="250">
+    <img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3/assets/Welcome.png" width="400" height="250">
 
     - **Set analysis settings** (optional):
         - **Scale:** enter the pixel distance and corresponding real distance, then choose a unit (e.g. `mm`, `cm`, `µm`).
@@ -308,7 +308,7 @@ When **"-> Add path tortuosity to Pareto (3D, slower)"** is enabled during analy
 - **epsilon_3d_material/transport/coverage:** Individual ratio components showing which objective constrains optimality
 - **Corner costs (Steiner/Satellite/Coverage):** Reference values for optimal architectures at each corner of the Pareto surface
 
-For complete field descriptions, see the [Output Fields Reference](docs/output-fields.md).
+For complete field descriptions, see the [Output Fields Reference](https://github.com/jazzsta/AriadneFork/blob/v0.3/docs/output-fields.md).
 
 #### Region Classification Fields (Optional)
 
@@ -348,7 +348,7 @@ By default it loads `tests/data/_set1_day1_20230320-154926_001_EtOH_EXP2_plantB_
 From the cloned repository:
 
 ```sh
-cd Ariadne
+cd AriadneFork
 uv sync
 ```
 
@@ -421,12 +421,12 @@ Follow these steps to set up your development environment and start making contr
 
 2. **Clone the repository**
     ```sh
-    git clone https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne.git
+    git clone https://github.com/jazzsta/AriadneFork.git
     ```
 
 3. **Navigate to the root of the cloned repository**
     ```sh
-    cd Ariadne
+    cd AriadneFork
     ```
 
 ## 🛠️ For Developers
@@ -440,8 +440,8 @@ Follow these steps to set up your development environment and start making contr
 Clone the repository:
 
 ```bash
-git clone https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne.git
-cd Ariadne
+git clone https://github.com/jazzsta/AriadneFork.git
+cd AriadneFork
 ```
 
 ## 🛠️ Development with uv
@@ -532,7 +532,7 @@ uvx pip-audit
 **Best Practices:**
 - Run `uvx pip-audit` before each release
 - Check the lockfile regularly for outdated dependencies with known vulnerabilities
-- Review [GitHub Security Advisories](https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/security/advisories) for this repository
+- Review [GitHub Security Advisories](https://github.com/jazzsta/AriadneFork/security/advisories) for this repository
 
 **Automated Monitoring:**
 Consider enabling GitHub Dependabot to receive automated pull requests for dependency updates and security patches.
@@ -709,7 +709,7 @@ To release a new package, follow these instructions:
 
 7. **Release to trigger the workflow**
 
-    1. Go to the [release page](https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/releases).
+    1. Go to the [release page](https://github.com/jazzsta/AriadneFork/releases).
     2. Draft a new release:
         - Create a new tag with the version number you used in the repository.
         - Have GitHub draft the release notes to include all the changes since the last release.

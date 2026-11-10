@@ -28,6 +28,16 @@ Ariadne 0.3 keeps the trace GUI, analyze workflow, scaling, tradeoff fields, alp
 - Analysis progress is now reported in a responsive loading window with per-file progress and phase labels.
 - The Analysis Settings dialog now uses clearer option labels: numbering was removed, and the two options that add computation are marked with `->` (`-> Add path tortuosity to Pareto (3D, slower)` and `-> Run region classification (adds report columns)`).
 
+## [0.2.0] - 2026-08-03
+
+### Fixed
+
+- README images/GIFs and internal doc links were broken on the PyPI project page (relative paths don't resolve through PyPI's readme renderer). Switched to absolute `raw.githubusercontent.com` / `github.com` URLs pinned to the `v0.2.0` tag.
+
+### Note
+
+This release promotes the 3D Pareto path tortuosity work from [0.2.0a1](#020a1---2026-02-18-pre-release) to stable. See that section below for the full feature list.
+
 ## [0.2.0a1] - 2026-02-18 (Pre-release)
 
 ### Added
@@ -120,9 +130,10 @@ Ariadne 0.3 keeps the trace GUI, analyze workflow, scaling, tradeoff fields, alp
 - Multi-file batch processing
 - NetworkX-based graph algorithms for root networks
 
-[Unreleased]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.3...HEAD
-[0.3]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.2.0...v0.3
-[0.2.0a1]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.1.0a1...v0.2.0a1
-[0.1.0a1]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.0.3...v0.1.0a1
-[0.0.3]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.0.2...v0.0.3
-[0.0.2]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/releases/tag/v0.0.2
+[Unreleased]: https://github.com/jazzsta/AriadneFork/compare/v0.3...HEAD
+[0.3]: https://github.com/jazzsta/AriadneFork/compare/v0.2.0...v0.3
+[0.2.0]: https://github.com/jazzsta/AriadneFork/compare/v0.2.0a1...v0.2.0
+[0.2.0a1]: https://github.com/jazzsta/AriadneFork/compare/v0.1.0a1...v0.2.0a1
+[0.1.0a1]: https://github.com/jazzsta/AriadneFork/compare/v0.0.3...v0.1.0a1
+[0.0.3]: https://github.com/jazzsta/AriadneFork/compare/v0.0.2...v0.0.3
+[0.0.2]: https://github.com/jazzsta/AriadneFork/releases/tag/v0.0.2
