@@ -1069,19 +1069,19 @@ class AnalyzerUI(tk.Frame):
         scale_win.grab_set()  # make popup modal
 
         # Labels + Entries
-        tk.Label(scale_win, text="1) Distance in pixels:").pack(pady=5)
+        tk.Label(scale_win, text="Distance in pixels:").pack(pady=5)
         pixels_entry = tk.Entry(scale_win)
         if not initial:
             pixels_entry.insert(0, "1")
         pixels_entry.pack(pady=5)
 
-        tk.Label(scale_win, text="2) Distance in (real units):").pack(pady=5)
+        tk.Label(scale_win, text="Distance in (real units):").pack(pady=5)
         real_entry = tk.Entry(scale_win)
         if not initial:
             real_entry.insert(0, f"{self.length_scale_factor:g}")
         real_entry.pack(pady=5)
 
-        tk.Label(scale_win, text="3) Unit of length (e.g., mm, cm):").pack(pady=5)
+        tk.Label(scale_win, text="Unit of length (e.g., mm, cm):").pack(pady=5)
         unit_entry = tk.Entry(scale_win)
         if not initial:
             unit_entry.insert(0, self.length_scale_unit)
@@ -1100,29 +1100,29 @@ class AnalyzerUI(tk.Frame):
         )
         tk.Checkbutton(
             scale_win,
-            text="Add path tortuosity to Pareto (3D, slower)",
+            text="-> Add path tortuosity to Pareto (3D, slower)",
             variable=enable_3d_var,
         ).pack(pady=5)
 
         # Region classification controls (2D sampling). Classification is
-        # optional so the report can keep the original Ariadne 1.0 columns.
+        # optional so the report can keep the original Ariadne 0.2.0 columns.
         run_classification_var = tk.BooleanVar(
             value=getattr(self, "run_classification", True)
         )
         tk.Checkbutton(
             scale_win,
-            text="4) Run region classification (adds report columns)",
+            text="-> Run region classification (adds report columns)",
             variable=run_classification_var,
         ).pack(pady=5)
 
         tk.Label(
-            scale_win, text="5) Classification samples (default 5000):"
+            scale_win, text="Classification samples (default 5000):"
         ).pack(pady=5)
         samples_entry = tk.Entry(scale_win)
         samples_entry.insert(0, str(self.n_samples))
         samples_entry.pack(pady=5)
 
-        tk.Label(scale_win, text="6) Region factor (default 0.5):").pack(pady=5)
+        tk.Label(scale_win, text="Region factor (default 0.5):").pack(pady=5)
         region_entry = tk.Entry(scale_win)
         region_entry.insert(0, str(self.region_factor))
         region_entry.pack(pady=5)
@@ -1537,7 +1537,7 @@ class AnalyzerUI(tk.Frame):
 
             # Local region classification (2D only). Reuses the front and the
             # straightened-tree reference already computed by analyze().
-            # It is optional so the report can keep the Ariadne 1.0 columns.
+            # It is optional so the report can keep the Ariadne 0.2.0 columns.
             if getattr(self, "run_classification", True):
                 try:
                     sampling_results = self._run_in_background(

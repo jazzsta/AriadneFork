@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3] - 2026-11-09
+
+Ariadne 0.3 keeps the trace GUI, analyze workflow, scaling, tradeoff fields, alpha interpolation, existing CSV field names, and 3D path-tortuosity analysis. The 2D scientific values can differ from 0.2.0 because the front generator, actual reference, and random baseline changed.
+
+### Added
+
+- **Analytical 2D Pareto front.** Replaced the steiner greedy 2D generator with a continuous analytical tip-preserving generator in fully greedy mode. New trees preserve every original tip, use binary branching, enforce the minimum-length/nude-zone constraint, and are rejected unless every tip is connected. Dominated front points are removed, and the actual reference is now the straightened RSA.
+- **Randomized analytical 2D baseline.** `random_steiner_wrapper_analytical()` draws `alpha` uniformly from `[0, 1]` and uses `optimization_rounds = 0`, applying the same tip, branching, minimum-length, and completeness constraints as the front. `analyze()` uses 100 random trees by default; the GUI uses 500.
+- **Optional region classification.** Sampling-based estimation of optimization level and local trade-off direction, with six optional CSV fields and GUI controls for enabling classification, sample count (default 5000), and region factor (default 0.5).
+- **Interactive HTML reports.** Pareto and region-sampling reports include hover panels showing the corresponding RSA. Static PNG and SVG Pareto output is retained, and reports share a local `plotly.min.js`.
+- **Research workflow.** Import-safe `ariadne_roots.research` module and `Ariadne0.3_Exploration.ipynb`, with headless graph loading through `quantify.get_graph_from_json()`.
+
+### Changed
+
+- 2D Pareto values, `alpha`, scaling distance, and tradeoff values can differ from 0.2.0 for the same input.
+- `Total root length (random)`, `Travel distance (random)`, `alpha (random)`, and `scaling (random)` now describe the randomized analytical baseline rather than the 0.2.0 random-spanning-tree model.
+- Version bumped to `0.3`; added `plotly` as a runtime dependency and JupyterLab, ipykernel, and nbconvert to the development dependencies.
+- Updated `README.md` and the scientific-methods and output-field documentation.
+- Analysis progress is now reported in a responsive loading window with per-file progress and phase labels.
+- The Analysis Settings dialog now uses clearer option labels: numbering was removed, and the two options that add computation are marked with `->` (`-> Add path tortuosity to Pareto (3D, slower)` and `-> Run region classification (adds report columns)`).
+
 ## [0.2.0a1] - 2026-02-18 (Pre-release)
 
 ### Added
@@ -99,7 +120,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-file batch processing
 - NetworkX-based graph algorithms for root networks
 
-[Unreleased]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.2.0a1...HEAD
+[Unreleased]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.3...HEAD
+[0.3]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.2.0...v0.3
 [0.2.0a1]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.1.0a1...v0.2.0a1
 [0.1.0a1]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.0.3...v0.1.0a1
 [0.0.3]: https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/compare/v0.0.2...v0.0.3

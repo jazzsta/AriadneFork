@@ -10,6 +10,7 @@ Tests cover:
 - k_nearest_neighbors() - nearest neighbor finding
 - satellite_tree() - satellite tree construction
 - pareto_front() - Pareto front computation
+- pareto_front_generic() - greedy and semi-random Pareto front computation
 - random_tree() - random tree generation
 - Helper functions (slope_vector, delta_point, steiner_points)
 """
@@ -30,11 +31,16 @@ from ariadne_roots.pareto_functions import (
     slope_vector,
     delta_point,
     steiner_points,
-    pareto_steiner_fast,
     pareto_steiner_fast_3d_path_tortuosity,
     pareto_front,
-    random_tree,
+    random_steiner_wrapper_analytical,
 )
+from ariadne_roots.research import (
+    pareto_steiner_fast,
+    pareto_steiner_fast_analytical_preserve_tips,
+    random_tree_costs as random_tree,
+)
+from ariadne_roots import pareto_functions
 
 
 # ========== Test get_critical_nodes() ==========
@@ -420,10 +426,10 @@ def test_pareto_front_alpha_range(simple_linear_graph):
     """Test that pareto_front covers alpha range [0, 1]."""
     front, actual = pareto_front(simple_linear_graph)
 
-    # Should have entries for alpha = 0.0, 0.01, ..., 1.0
+    # The linear graph has a single nondominated cost point; only one alpha
+    # key survives clean_pareto_front().
     assert 0.0 in front
-    assert 1.0 in front
-    assert len(front) >= 100  # At least 101 alpha values (0.00 to 1.00)
+    assert len(front) >= 1
 
 
 def test_pareto_front_actual_costs(simple_linear_graph):
@@ -467,6 +473,47 @@ def test_random_tree_positive_costs(simple_branching_graph):
     for wiring, delay in costs:
         assert wiring >= 0
         assert delay >= 0
+
+
+# ========== Test random_steiner_wrapper_analytical() ==========
+
+
+def test_random_steiner_wrapper_analytical_preserves_tips_and_reports_costs(
+    simple_branching_graph,
+):
+    """Analytical random baseline keeps every tip and reports the tree's costs.
+
+    The 0.3 baseline must use the same tip-preserving analytical generator as
+    the front, with random connections. Each returned cost must therefore match
+    the costs recomputed from the corresponding returned tree, every original
+    tip must still be present, and repeated draws must not collapse onto a
+    single deterministic architecture.
+    """
+    G = simple_branching_graph
+    original_tips = set(get_critical_nodes(G)) - {0}
+    n = 10
+
+    costs, trees = random_steiner_wrapper_analytical(G, n=n)
+
+    assert len(trees) == n
+    assert len(costs) == n
+
+    for tree, (wiring, delay) in zip(trees, costs):
+        assert nx.is_tree(tree)
+        assert 0 in tree
+
+        tree_tips = set(get_critical_nodes(tree)) - {0}
+        assert original_tips <= tree_tips, "Original tips must be preserved"
+
+        expected_wiring, expected_delay = graph_costs(
+            tree, critical_nodes=get_critical_nodes(tree)
+        )
+        assert math.isclose(wiring, expected_wiring, rel_tol=1e-8)
+        assert math.isclose(delay, expected_delay, rel_tol=1e-8)
+        assert wiring > 0
+        assert delay > 0
+
+    assert len(set(costs)) > 1, "optimization_rounds=0 must produce random trees"
 
 
 # ========== Test pareto_cost_3d invalid inputs ==========
@@ -685,3 +732,97 @@ def test_real_data_workflow(plantB_day11_json):
     # Test is finite (not cyclic)
     assert wiring != float("inf")
     assert delay != float("inf")
+
+
+# ========== Test pareto_front() default behavior ==========
+
+
+def test_semi_random_rejects_incomplete_tree(simple_branching_graph, monkeypatch):
+    """A partial semi-random tree is rejected rather than returned."""
+    monkeypatch.setattr(
+        pareto_functions,
+        "sample_random_attachment",
+        lambda *args, **kwargs: None,
+    )
+
+    tree = pareto_functions.pareto_steiner_fast_analytical_preserve_tips_semi_random(
+        simple_branching_graph, alpha=0.5, optimization_rounds=0
+    )
+
+    assert tree is None
+
+
+def _tree_signature(tree):
+    """Return a comparable position/edge signature for a generated tree."""
+    positions = tuple(
+        sorted(
+            (
+                node,
+                (
+                    round(float(tree.nodes[node]["pos"][0]), 8),
+                    round(float(tree.nodes[node]["pos"][1]), 8),
+                ),
+            )
+            for node in tree.nodes()
+        )
+    )
+    edges = tuple(sorted(tuple(sorted(edge)) for edge in tree.edges()))
+    return positions, edges
+
+
+def test_deterministic_generator_falls_back_to_valid_basal_tip():
+    """The basal connection skips the closest tip when it violates min_length."""
+    G = nx.Graph()
+    G.add_node(0, pos=(0, 0))
+    G.add_node(1, pos=(0, 100))
+    G.add_node(2, pos=(2, 2))
+    G.add_node(3, pos=(100, 100))
+    G.add_edge(0, 1, weight=100)
+    G.add_edge(1, 2, weight=98.0)
+    G.add_edge(1, 3, weight=100)
+
+    tree = pareto_steiner_fast_analytical_preserve_tips(G, alpha=0.5)
+
+    assert tree is not None
+    assert {0, 2, 3}.issubset(tree.nodes)
+    assert tree.degree(0) == 1
+
+
+def test_best_small_edge_attachment_returns_a_fallback():
+    """The randomized generator can fall back to a short-edge midpoint."""
+    G = nx.Graph()
+    G.add_node(0, pos=(0, 0))
+    G.add_node(1, pos=(0, 4))
+    G.add_node(2, pos=(0, 10))
+    G.add_edge(0, 1, weight=4)
+    G.add_edge(1, 2, weight=6)
+
+    H = nx.Graph()
+    H.add_node(0, pos=(0, 0), distance_to_base=0)
+    H.add_node(1, pos=(0, 4), distance_to_base=4)
+    H.add_edge(0, 1, weight=4)
+
+    action = pareto_functions.best_small_edge_attachment(
+        G, H, {2}, alpha=0.5, min_length=3
+    )
+
+    assert action is not None
+    u, v, tip, point = action
+    assert {u, v} == {0, 1}
+    assert tip == 2
+    assert point == (0.0, 2.0)
+
+
+def test_full_greedy_wrapper_matches_deterministic_generator(simple_branching_graph):
+    """The UI wrapper and the moved deterministic generator build the same tree."""
+    for alpha in (0.0, 0.25, 0.5, 0.75, 1.0):
+        deterministic = pareto_steiner_fast_analytical_preserve_tips(
+            simple_branching_graph, alpha
+        )
+        full_greedy = (
+            pareto_functions.pareto_steiner_fast(
+                simple_branching_graph, alpha
+            )
+        )
+
+        assert _tree_signature(deterministic) == _tree_signature(full_greedy)

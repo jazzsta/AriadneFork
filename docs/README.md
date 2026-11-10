@@ -8,6 +8,7 @@ This directory contains detailed documentation for the Ariadne root system analy
 |----------|-------------|
 | [Scientific Methods](scientific-methods.md) | Pareto optimality calculations, formulas, and academic references |
 | [Output Fields Reference](output-fields.md) | Complete reference for all CSV output fields with units and interpretation |
+| [Ariadne 0.3 Research Notebook](../Ariadne0.3_Exploration.ipynb) | Reproducible figures and simulations from *Road to Ariadne 0.3* |
 
 ## Quick Links
 
@@ -28,7 +29,9 @@ If you're using Ariadne for research and need to cite the underlying methods:
 
 - Source code: `src/ariadne_roots/`
 - Key modules:
-  - `quantify.py` - Root trait calculations and analysis
-  - `pareto_functions.py` - Pareto optimality algorithms
+  - `main.py` - Trace and analyze GUI
+  - `quantify.py` - Root trait calculations, analysis pipeline, CSV/scaling output, region classification, and report HTML
+  - `pareto_functions.py` - Shared graph costs, analytical Pareto algorithms, the analytical 2D null model, and 3D Pareto support
+  - `research.py` - Self-contained Ariadne 0.3 research workflow for IPython/script use
 - Tests: `tests/` directory
 - OpenSpec specifications: `openspec/` directory

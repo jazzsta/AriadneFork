@@ -268,6 +268,32 @@ class TestScalingTransformation:
         assert scaled["Satellite_distance"] == 32523.42 * 2.0
         assert scaled["Total root length"] == 200.0
 
+    def test_region_classification_fields_not_scaled(self):
+        """Region-classification statistics are dimensionless and must not scale."""
+        results = {
+            "mean_rounds_normalized": 0.65,
+            "ci_low_normalized": 0.55,
+            "ci_high_normalized": 0.75,
+            "local_mean_alpha": 0.47,
+            "local_alpha_ci_low": 0.42,
+            "local_alpha_ci_high": 0.52,
+            "Total root length": 100.0,
+        }
+
+        scaled = apply_scaling_transformation(results, 2.0)
+
+        for field in [
+            "mean_rounds_normalized",
+            "ci_low_normalized",
+            "ci_high_normalized",
+            "local_mean_alpha",
+            "local_alpha_ci_low",
+            "local_alpha_ci_high",
+        ]:
+            assert scaled[field] == results[field], f"{field} should not be scaled"
+
+        assert scaled["Total root length"] == 200.0
+
     def test_3d_weight_fields_not_scaled(self):
         """Test that 3D Pareto weight fields (beta_3d, gamma_3d) are NOT scaled.
 

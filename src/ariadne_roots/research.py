@@ -1,14 +1,13 @@
-"""Ariadne 2.0 research workflow.
+"""Ariadne 0.3 research workflow.
 
-This module follows the scientific story in *Road to Ariadne 2.0*:
+This module follows the scientific story in *Road to Ariadne 0.3*:
 straightening, tip preservation, fixed-spacing and continuous fronts,
-random null models, optimization landscapes, and sampling-based
-classification. It is import-safe; the demonstration runs only under
-``if __name__ == "__main__":``.
+random null models, optimization landscape, and sampling-based
+classification. It is import-safe and is intended to be used in
+``Ariadne0.3_Exploration.ipynb`` or an interactive Python session.
 """
 
 import copy
-import json
 import random
 from bisect import insort
 
@@ -18,12 +17,13 @@ import numpy as np
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.colors import LinearSegmentedColormap, hsv_to_rgb
 from matplotlib.path import Path as MplPath
-from networkx.readwrite import json_graph
 from scipy.spatial import ConvexHull
 
 from ariadne_roots.pareto_functions import (
     DEFAULT_ALPHAS,
     STEINER_MIDPOINTS,
+    _tree_hover_payload,
+    clean_pareto_front,
     find_optimal_t_on_analytical,
     get_critical_nodes,
     get_min_lateral_length,
@@ -31,10 +31,9 @@ from ariadne_roots.pareto_functions import (
     k_nearest_neighbors,
     node_dist,
     pareto_cost,
-    pareto_front_generic,
+    pareto_front,
     pareto_steiner_fast_analytical_preserve_tips_semi_random,
     point_dist,
-    random_steiner_wrapper_analytical,
     satellite_tree,
     steiner_points,
     straighten_tree,
@@ -3249,26 +3248,6 @@ def sample_region(
     return result
 
 
-def get_graph_from_json(json_file):
-    """Load a JSON file and convert it to a NetworkX graph.
-
-    Args:
-        json_file (str): Path to the JSON file.
-
-    Returns:
-        nx.Graph: A NetworkX graph object.
-    """
-    with open(json_file, mode="r") as h:
-        data = json.load(h)
-        graph = json_graph.adjacency_graph(data)
-
-        # Convert to undirected if needed
-    if graph.is_directed():
-        graph = graph.to_undirected()
-
-    return graph
-
-
 # Moved from pareto_functions.py: deterministic analytical greedy generator.
 def pareto_steiner_fast_analytical_preserve_tips(G, alpha, min_length_factor=0.5,
                                                  spacing_factor=1.0, verbose=False):
@@ -3448,47 +3427,6 @@ def random_tree_costs(G):
     return costs
 
 
-def demo(graph_path=None):
-    """Run the core Ariadne 2.0 workflow on one digitized JSON graph."""
-    if graph_path is None:
-        raise SystemExit(
-            "Usage: python -m ariadne_roots.research <graph.json>"
-        )
-
-    G = get_graph_from_json(graph_path)
-    H = G.to_undirected()
-
-    for u, v in H.edges():
-        if "weight" not in H[u][v]:
-            H[u][v]["weight"] = point_dist(H.nodes[u]["pos"], H.nodes[v]["pos"])
-
-    front, actual = pareto_front_generic(
-        H, pareto_steiner_fast_analytical_preserve_tips
-    )
-    randoms, random_trees = random_steiner_wrapper_analytical(H, n=100)
-
-    print(f"Actual tree: {actual}")
-    print(f"Front points: {len(front)}")
-    print(f"Random trees: {len(random_trees)}")
-
-    # Plots are intentionally after the computations.
-    plot_rsa_and_abstraction(H)
-    plot_steiner_sequence(
-        H,
-        pareto_steiner_fast_analytical_preserve_tips,
-        alphas=[0.0, 0.25, 0.5, 0.75, 1.0],
-    )
-    plot_random_sequence(H, random_steiner_wrapper_analytical)
-    plt.show()
-
-
-if __name__ == "__main__":
-    import sys
-
-    demo(sys.argv[1] if len(sys.argv) > 1 else None)
-
-
-# Moved from quantify.py: Plots a root-system graph using node positions from their attributes, with axes and optional grid..
 def plot_graph(
     G,
     node_size_factor=20,
@@ -4089,51 +4027,82 @@ def pareto_steiner_fast_preserve_tips_fixed_spacing_binary_pareto(
     return H
 
 
-# Moved from pareto_functions.py: Given a graph G, compute the Pareto front of optimal solutions for the wiring cost and conduction delay..
-def pareto_front(G):
-    """Given a graph G, compute the Pareto front of optimal solutions for the wiring cost and conduction delay.
-
-    This allows to compare how G was connected and how G could have been connected had it
-    been trying to optimize wiring cost and conduction delay.
-
-    When alpha = 0, the algorithm computes the satellite tree in linear time. This is the tree
-    that connects the base node to all of the critical nodes in G.
-
-    When alpha != 0, the algorithm computes the Pareto-optimal tree connecting the base node to all
-    of the critical nodes in G. The algorithm attempts to optimize alpha * D + (1 - alpha) * W
-    where D is the conduction delay and W is the wiring cost.
+def pareto_front_generic(
+    G, steiner_function, semi_random=False, tree_payloads=None
+):
+    """
+    Compute Pareto front using any steiner function.
 
     Args:
-        G (nx.Graph): The graph to compute the Pareto front for
+        G: Input graph
+        steiner_function: Function that takes (G, alpha) and returns a tree.
+            When ``semi_random`` is True it must also accept the
+            ``optimization_rounds`` keyword.
+        semi_random: If True, evaluate one fully optimized tree per alpha and
+            four randomized trees (uniform alpha and 80-100% of the available
+            optimization rounds) to refine the front. Trees that do not contain
+            every original critical node are discarded.
+        tree_payloads: Optional mutable dict. When provided, it is filled with
+            compact geometry payloads keyed by the same alpha keys as ``front``
+            so HTML reports can draw a tree for each front point.
+
     Returns:
-        front (dict): A dictionary of edge_lengths, travel_distances_to_base for each alpha value on the front
-        actual (tuple): The actual total_root_length, total_travel_distance of the original plant
+        front: dict mapping alpha -> [wiring, travel]
+        actual: tuple (wiring, travel) for the straightened tree
     """
+    for u, v in G.edges():
+        if 'weight' not in G[u][v]:
+            G[u][v]['weight'] = point_dist(G.nodes[u]['pos'], G.nodes[v]['pos'])
+
     critical_nodes = get_critical_nodes(G)
 
-    # test: compute the actual total_root_length, total_travel_distance for the original plant
-    mactual, sactual = graph_costs(G, critical_nodes=critical_nodes)
-    actual = (mactual, sactual)
+    # Use straightened tree as the reference "actual" point
+    straight = straighten_tree(G)
+    actual = graph_costs(straight, critical_nodes=critical_nodes)
 
-    # dictionary of edge_lengths, travel_distances_to_base for each alpha value on the front
     front = {}
 
-    for alpha in DEFAULT_ALPHAS:
-        H = None
-        # if alpha = 0 compute the satellite tree in linear time
-        if alpha == 0:
-            H = satellite_tree(G)
-        else:
-            H = pareto_steiner_fast(G, alpha)
+    required_nodes = set(critical_nodes)
+    serialize_tree = _tree_hover_payload if tree_payloads is not None else None
 
-        # compute the wiring cost and conduction delay
-        # only the original critical nodes contribute to conduction delay
+    def add_tree(key, tree):
+        if tree is None:
+            return
+        if semi_random and not required_nodes.issubset(tree.nodes):
+            return
         total_root_length, total_travel_distance = graph_costs(
-            H, critical_nodes=critical_nodes
+            tree, critical_nodes=critical_nodes
         )
-        front[alpha] = [total_root_length, total_travel_distance]
+        front[key] = [total_root_length, total_travel_distance]
+        if serialize_tree is not None:
+            tree_payloads[key] = serialize_tree(tree, None, None)
 
-    return front, actual
+    for alpha in DEFAULT_ALPHAS:
+        if semi_random:
+            H = steiner_function(
+                G, alpha, optimization_rounds=len(critical_nodes)
+            )
+            add_tree(alpha, H)
+
+            # A few randomized runs per alpha catch points that the greedy
+            # construction misses. Most decisions remain greedy (80-100% of
+            # the available rounds); only the tail of the construction is
+            # randomized.
+            for _ in range(4):
+                lambda_value = np.random.uniform(0.8, 1.0)
+                alpharandom = np.random.uniform(0, 1.0)
+                H_rand = steiner_function(
+                    G,
+                    alpharandom,
+                    optimization_rounds=lambda_value * len(critical_nodes),
+                )
+                add_tree(alpharandom, H_rand)
+        else:
+            H = steiner_function(G, alpha)
+            add_tree(alpha, H)
+
+    return clean_pareto_front(front), actual
+
 
 
 # Moved from pareto_functions.py: Compute the hypervolume (area) dominated by the Pareto front relative to a reference point..

@@ -28,7 +28,6 @@ from ariadne_roots.quantify import (
     calc_len_PR,
     calc_len_LRs,
     calc_zones,
-    calculate_convex_hull_area,
     calculate_plot_buffer,
     distance_from_front,
     calculate_tradeoff,
@@ -36,7 +35,9 @@ from ariadne_roots.quantify import (
     calc_len_LRs_with_distances,
     find_lowermost_node_of_primary_root,
     analyze,
+    save_pareto_html,
 )
+from ariadne_roots.legacy import calculate_convex_hull_area
 
 
 # ========== Test distance() ==========
@@ -631,7 +632,35 @@ def test_pareto_calcs_simple(simple_lateral_root_graph):
 
     # Randoms should be a list of tuples
     assert isinstance(randoms, list)
-    assert len(randoms) == 1000
+    assert len(randoms) == 100
+
+
+def test_pareto_calcs_collects_hover_tree_payloads(simple_lateral_root_graph):
+    """Optional tree payloads are aligned with the random baseline."""
+    from ariadne_roots.pareto_functions import node_dist
+
+    for u, v in simple_lateral_root_graph.edges():
+        if "weight" not in simple_lateral_root_graph[u][v]:
+            simple_lateral_root_graph[u][v]["weight"] = node_dist(
+                simple_lateral_root_graph, u, v
+            )
+
+    payloads = {}
+    _, front, randoms = pareto_calcs(
+        simple_lateral_root_graph, n_random=3, tree_payloads=payloads
+    )
+
+    assert payloads["actual"]["p"]
+    assert len(payloads["front"]) == len(front)
+    assert len(payloads["randoms"]) == len(randoms)
+    for payload in [
+        payloads["actual"],
+        *payloads["front"],
+        *payloads["randoms"],
+    ]:
+        assert len(payload["p"]) == len(payload["e"]) + 1
+        assert payload["a"] is None
+        assert payload["r"] is None
 
 
 # ========== Test calc_len_LRs_with_distances() ==========
@@ -789,29 +818,30 @@ def test_analyze(
         # convert to networkx graph
         graph = json_graph.adjacency_graph(data)
 
-        # perform analysis (enable_3d=False for faster test)
+        # perform analysis (enable_3d=False for faster test; random values are
+        # not asserted here, so use a small random baseline)
         results, front, randoms, results_3d, front_3d, randoms_3d = analyze(
-            graph, enable_3d=False
+            graph, enable_3d=False, n_random=10
         )
 
         # check the results
         assert len(results) == 38  # 31 original + 7 tradeoff fields
         # Random values are not tested here
         # Scalar assertions
-        assert isclose(results["Total root length"], 13196.30945, rel_tol=1e-8)
-        assert isclose(results["Travel distance"], 34709.9406, rel_tol=1e-8)
+        assert isclose(results["Total root length"], 12785.077747551752, rel_tol=1e-8)
+        assert isclose(results["Travel distance"], 33630.945442187534, rel_tol=1e-8)
         # Alpha is now interpolated between discrete values for higher precision
-        assert isclose(results["alpha"], 0.004435003275475457, rel_tol=1e-8)
-        assert isclose(results["scaling distance to front"], 1.067228823, rel_tol=1e-8)
+        assert isclose(results["alpha"], 0.0043406630797616155, rel_tol=1e-8)
+        assert isclose(results["scaling distance to front"], 1.0330323817835148, rel_tol=1e-8)
 
         # Tradeoff metric assertions
-        assert isclose(results["Tradeoff"], 2.512831837486991, rel_tol=1e-8)
-        assert isclose(results["Steiner_length"], 4920.752469563776, rel_tol=1e-8)
-        assert isclose(results["Steiner_distance"], 39266.99938955784, rel_tol=1e-8)
-        assert isclose(results["Satellite_length"], 32523.42876279192, rel_tol=1e-8)
-        assert isclose(results["Satellite_distance"], 32523.42876279192, rel_tol=1e-8)
-        assert isclose(results["Actual_ratio"], 0.3801881886469075, rel_tol=1e-8)
-        assert isclose(results["Optimal_ratio"], 0.1512986993300445, rel_tol=1e-8)
+        assert isclose(results["Tradeoff"], 2.4129877006711578, rel_tol=1e-8)
+        assert isclose(results["Steiner_length"], 5129.019259351042, rel_tol=1e-8)
+        assert isclose(results["Steiner_distance"], 39982.57561618427, rel_tol=1e-8)
+        assert isclose(results["Satellite_length"], 30645.921081313074, rel_tol=1e-8)
+        assert isclose(results["Satellite_distance"], 32555.55782687491, rel_tol=1e-8)
+        assert isclose(results["Actual_ratio"], 0.3801581424325293, rel_tol=1e-8)
+        assert isclose(results["Optimal_ratio"], 0.15754665567785142, rel_tol=1e-8)
         assert isclose(results["PR length"], 3610.664228, rel_tol=1e-8)
         assert isclose(results["PR_minimal_length"], 3459.128503, rel_tol=1e-8)
         assert isclose(results["Basal Zone length"], 0, rel_tol=1e-8)
@@ -840,15 +870,13 @@ def test_analyze(
         )
 
         # Check the front
-        assert len(front) == 101
-        # When alpha is 0 the satellite tree is used so the total_root_length is the same as the total_travel_distance
+        assert len(front) == 89
+        # At alpha=0 the analytical tip-preserving front is the satellite-like
+        # endpoint (maximum wiring, minimum travel).
         npt.assert_allclose(
             front.get(np.float64(0.0)),
-            [32523.428762791922, 32523.428762791922],
+            [30645.921081313074, 32555.55782687491],
             rtol=1e-8,
-        )
-        assert isclose(
-            front.get(np.float64(0.0))[0], front.get(np.float64(0.0))[1], rel_tol=1e-8
         )
 
         min_root_length = min(front.values(), key=lambda x: x[0])[0]
@@ -863,11 +891,75 @@ def test_analyze(
         assert max_travel_distance == front.get(np.float64(1.0))[1]
         # alpha 0.5 is the middle of the front
         assert isclose(
-            front.get(np.float64(0.5))[0], 5196.958333735241, rel_tol=1e-8
+            front.get(np.float64(0.5))[0], 5356.944505466765, rel_tol=1e-8
         )  # total_root_length
         assert isclose(
-            front.get(np.float64(0.5))[1], 34690.010682440174, rel_tol=1e-8
+            front.get(np.float64(0.5))[1], 34824.86077146571, rel_tol=1e-8
         )  # total_travel_distance
+
+
+def test_save_pareto_html_embeds_hover_tree_payloads(tmp_path):
+    """The Pareto HTML includes tree hover payloads for front, actual, randoms."""
+    front = {0.0: [10.0, 20.0], 1.0: [20.0, 10.0]}
+    actual = (15.0, 15.0)
+    randoms = [(12.0, 18.0)]
+    hover_trees = {
+        "actual": {
+            "p": [[0, 0], [0, 10]],
+            "e": [[0, 1]],
+            "b": 0,
+            "a": None,
+            "r": None,
+        },
+        "front": [
+            {
+                "p": [[0, 0], [0, 5]],
+                "e": [[0, 1]],
+                "b": 0,
+                "a": None,
+                "r": None,
+            },
+            {
+                "p": [[0, 0], [5, 0]],
+                "e": [[0, 1]],
+                "b": 0,
+                "a": None,
+                "r": None,
+            },
+        ],
+        "randoms": [
+            {
+                "p": [[0, 0], [10, 0]],
+                "e": [[0, 1]],
+                "b": 0,
+                "a": None,
+                "r": None,
+            }
+        ],
+    }
+
+    html_path = tmp_path / "pareto.html"
+    save_pareto_html(
+        front,
+        actual,
+        randoms,
+        12.0,
+        18.0,
+        html_path,
+        hover_trees=hover_trees,
+    )
+
+    text = html_path.read_text(encoding="utf-8")
+    assert "rsa-hover-tree" in text
+    assert "sizePanelToTitle" in text
+    assert 'const trees = [{"p":[[0,0],[10,0]]' in text
+    assert 'const frontTrees = [{"p":[[0,0],[0,5]]' in text
+    assert 'const actualTree = {"p":[[0,0],[0,10]]' in text
+    assert '"Random RSA"' in text
+    assert '"Front RSA"' in text
+    assert '"Actual RSA"' in text
+    assert "Alpha: %{customdata:.4f}" in text
+    assert (tmp_path / "plotly.min.js").exists()
 
 
 class TestPlotBufferCalculation:

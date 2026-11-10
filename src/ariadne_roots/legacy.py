@@ -902,8 +902,8 @@ def pareto_steiner_partial_random(G, alpha, optimal_fraction=0.5, min_length_fac
 
 
 """
-G=get_graph_from_json("C:\\Users\\delivori\\Documents\\jsonArchis\\_set1_day1_20240429-125122_010_plantB_day1.json")
-G2=get_graph_from_json("C:\\Users\\delivori\\Documents\\jsonArchis\\_set1_day1_20240429-125122_010_plantD_day1.json")
+G=get_graph_from_json("tests/data\\_set1_day1_20240429-125122_010_plantB_day1.json")
+G2=get_graph_from_json("tests/data\\_set1_day1_20240429-125122_010_plantD_day1.json")
 
 """
 
@@ -1678,30 +1678,6 @@ def pareto_steiner_fast_preserve_tips_fixed_spacing_binary_pareto_random_geometr
             break
 
     return H
-
-
-
-
-
-
-
-if __name__ == "__main__":
-    from ariadne_roots.main import get_graph_from_json
-
-    simpgraphs = []
-    folder_path = "C:\\Users\\delivori\\Documents\\jsonArchis"
-    json_files = list(Path(folder_path).glob("*.json"))
-
-    graphs = []
-    for filepath in json_files:
-        G = get_graph_from_json(str(filepath))
-        graphs.append(G)
-        print(f"Loaded: {filepath.name}")
-
-    graphs.pop(0)
-
-    for G in graphs:
-        simpgraphs.append(straighten_tree(G))
 
 
 # Legacy (exploration.py): Debug comparison between fixed-spacing and continuous Steiner algorithms.
@@ -4944,7 +4920,7 @@ def comparaplot(G, n_random=500):
     )
 
 """
-G=get_graph_from_json("C:\\Users\\delivori\\Documents\\jsonArchis\\_set1_day1_20240429-125122_010_plantB_day1.json")
+G=get_graph_from_json("tests/data\\_set1_day1_20240429-125122_010_plantB_day1.json")
 
 
 """

@@ -23,13 +23,25 @@ from ariadne_roots import config, quantify, scaling
 PRECISION = 1e-6
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def plantB_day11_graph():
     """Load the real plantB_day11 root data as a NetworkX graph."""
     file_path = Path("tests/data/_set1_day1_20230509-125420_014_plantB_day11.json")
     with open(file_path, "r") as f:
         data = json.load(f)
     return json_graph.adjacency_graph(data)
+
+
+@pytest.fixture(scope="module")
+def analysis_2d(analysis_3d):
+    """Reuse the 2D portion of the single analyze() call."""
+    return analysis_3d
+
+
+@pytest.fixture(scope="module")
+def analysis_3d(plantB_day11_graph):
+    """Run the slower 3D analysis once for all 3D scaling tests."""
+    return quantify.analyze(plantB_day11_graph, enable_3d=True, n_random=10)
 
 
 @pytest.fixture
@@ -45,15 +57,13 @@ class TestPlotScalingConsistency:
     No mocking - tests actual computed values.
     """
 
-    def test_2d_analysis_produces_scalable_results(self, plantB_day11_graph):
+    def test_2d_analysis_produces_scalable_results(self, analysis_2d):
         """Verify 2D analysis produces results that can be scaled correctly.
 
         This test verifies the analysis-to-CSV scaling path is working.
         """
-        G = plantB_day11_graph
-
         # Run analysis (returns unscaled values)
-        results, front, randoms, _, _, _ = quantify.analyze(G, enable_3d=False)
+        results, front, randoms, _, _, _ = analysis_2d
 
         # Verify results contain expected keys
         assert "Total root length" in results
@@ -69,17 +79,13 @@ class TestPlotScalingConsistency:
         assert isinstance(randoms, list)
         assert len(randoms) > 0
 
-    def test_3d_analysis_produces_scalable_results(self, plantB_day11_graph):
+    def test_3d_analysis_produces_scalable_results(self, analysis_3d):
         """Verify 3D analysis produces results that can be scaled correctly.
 
         This test verifies the 3D analysis-to-CSV scaling path is working.
         """
-        G = plantB_day11_graph
-
         # Run analysis with 3D enabled
-        results, front, randoms, results_3d, front_3d, randoms_3d = quantify.analyze(
-            G, enable_3d=True
-        )
+        results, front, randoms, results_3d, front_3d, randoms_3d = analysis_3d
 
         # Verify 3D results contain expected keys
         assert "Total root length" in results_3d
@@ -100,16 +106,14 @@ class TestPlotScalingConsistency:
             assert len(randoms_3d[0]) == 3  # (length, distance, tortuosity)
 
     def test_scaling_transformation_preserves_structure(
-        self, plantB_day11_graph, test_scale_factor
+        self, analysis_3d, test_scale_factor
     ):
         """Verify scaling transformation produces expected scaled values.
 
         This tests that apply_scaling_transformation works correctly.
         """
-        G = plantB_day11_graph
-
         # Run analysis
-        results, _, _, results_3d, _, _ = quantify.analyze(G, enable_3d=True)
+        results, _, _, results_3d, _, _ = analysis_3d
 
         # Apply scaling
         scaled_results = scaling.apply_scaling_transformation(
@@ -148,9 +152,7 @@ class TestPlot2DScalingBehavior:
     These tests verify that plot_all() correctly scales data internally.
     """
 
-    def test_2d_plot_uses_config_scale_factor(
-        self, plantB_day11_graph, test_scale_factor
-    ):
+    def test_2d_plot_uses_config_scale_factor(self, test_scale_factor):
         """Verify 2D plot function uses config.length_scale_factor for scaling.
 
         We can verify this by checking the plot_all source code contains
@@ -168,15 +170,13 @@ class TestPlot2DScalingBehavior:
             "config.length_scale_factor" in source
         ), "plot_all should use config.length_scale_factor"
 
-    def test_2d_plot_data_would_be_scaled(self, plantB_day11_graph, test_scale_factor):
+    def test_2d_plot_data_would_be_scaled(self, analysis_2d, test_scale_factor):
         """Verify 2D plot would scale data correctly given a scale factor.
 
         This tests the expected behavior without actually rendering the plot.
         """
-        G = plantB_day11_graph
-
         # Run analysis
-        results, front, randoms, _, _, _ = quantify.analyze(G, enable_3d=False)
+        results, front, randoms, _, _, _ = analysis_2d
 
         # Set config scale factor (as main.py would do)
         original_scale = config.length_scale_factor
@@ -228,16 +228,14 @@ class TestPlot3DScalingBehavior:
         ), "plot_all_3d should use config.length_scale_factor"
 
     def test_3d_plot_data_should_be_scaled_xy_only(
-        self, plantB_day11_graph, test_scale_factor
+        self, analysis_3d, test_scale_factor
     ):
         """Verify 3D plot should scale x,y (length/distance) but not z (tortuosity).
 
         This validates the expected behavior for dimensionless z-axis.
         """
-        G = plantB_day11_graph
-
         # Run analysis
-        _, _, _, results_3d, front_3d, randoms_3d = quantify.analyze(G, enable_3d=True)
+        _, _, _, results_3d, front_3d, randoms_3d = analysis_3d
 
         # Set config scale factor
         original_scale = config.length_scale_factor
@@ -262,13 +260,11 @@ class TestPlot3DScalingBehavior:
             config.length_scale_factor = original_scale
 
     def test_3d_random_trees_xy_should_be_scaled(
-        self, plantB_day11_graph, test_scale_factor
+        self, analysis_3d, test_scale_factor
     ):
         """Verify random tree x,y values should be scaled, z unchanged."""
-        G = plantB_day11_graph
-
         # Run analysis
-        _, _, _, results_3d, _, randoms_3d = quantify.analyze(G, enable_3d=True)
+        _, _, _, results_3d, _, randoms_3d = analysis_3d
 
         # Set config scale factor
         original_scale = config.length_scale_factor
@@ -300,13 +296,11 @@ class TestPlotCSVConsistency:
     """
 
     def test_2d_scaled_results_match_expected_csv_values(
-        self, plantB_day11_graph, test_scale_factor
+        self, analysis_2d, test_scale_factor
     ):
         """Verify scaled 2D results match what would appear in CSV."""
-        G = plantB_day11_graph
-
         # Run analysis
-        results, front, randoms, _, _, _ = quantify.analyze(G, enable_3d=False)
+        results, front, randoms, _, _, _ = analysis_2d
 
         # Apply scaling (as main.py does for CSV)
         scaled_results = scaling.apply_scaling_transformation(
@@ -332,16 +326,14 @@ class TestPlotCSVConsistency:
             config.length_scale_factor = original_scale
 
     def test_3d_scaled_results_should_match_expected_csv_values(
-        self, plantB_day11_graph, test_scale_factor
+        self, analysis_3d, test_scale_factor
     ):
         """Verify scaled 3D results would match CSV if plot_all_3d scaled correctly.
 
         This documents the expected behavior for the fix.
         """
-        G = plantB_day11_graph
-
         # Run analysis
-        _, _, _, results_3d, front_3d, randoms_3d = quantify.analyze(G, enable_3d=True)
+        _, _, _, results_3d, front_3d, randoms_3d = analysis_3d
 
         # Apply scaling (as main.py does for CSV)
         scaled_results_3d = scaling.apply_scaling_transformation(

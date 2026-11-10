@@ -19,7 +19,7 @@ class TestGUILabels:
         source = main_py.read_text()
 
         # The label should mention path tortuosity to clarify what 3D adds
-        expected_label = "Add path tortuosity to Pareto (3D, slower)"
+        expected_label = "-> Add path tortuosity to Pareto (3D, slower)"
         assert expected_label in source, (
             f"Expected 3D Pareto checkbox label '{expected_label}' not found. "
             "The label should clearly indicate that 3D adds path tortuosity analysis."
@@ -355,3 +355,54 @@ class TestScalingIntegration:
         # Filename should never be modified
         assert scaled["filename"] == "critical_filename.json"
         assert isinstance(scaled["filename"], str)
+
+
+class TestConfigurableAnalysisUI:
+    """Tests for the settings button and analysis progress window."""
+
+    def test_analysis_settings_button_exists(self):
+        """Users can reopen the analysis parameters without restarting."""
+        main_py = Path(__file__).parent.parent / "src" / "ariadne_roots" / "main.py"
+        source = main_py.read_text()
+
+        assert 'text="Analysis settings"' in source
+        assert "self.ask_scale(initial=True)" in source
+
+    def test_loading_window_reports_plant_and_sampling_progress(self):
+        """The loading window shows the plant number and 5%-step progress."""
+        main_py = Path(__file__).parent.parent / "src" / "ariadne_roots" / "main.py"
+        source = main_py.read_text()
+
+        assert "ttk.Progressbar" in source
+        assert "Plant {plant_number} of {total_plants}" in source
+        assert "Semi-random trees: {done}/{total}" in source
+        assert "uses_progress=True" in source
+        assert "indeterminate=True" in source
+        assert "threading.Thread" in source
+
+    def test_background_worker_keeps_tk_finalizers_on_main_thread(self):
+        """Tk objects must not be finalized by the analysis worker thread."""
+        main_py = Path(__file__).parent.parent / "src" / "ariadne_roots" / "main.py"
+        source = main_py.read_text()
+
+        start = source.index("def _run_in_background")
+        end = source.index("def import_file", start)
+        worker_source = source[start:end]
+
+        assert "gc.collect()" in worker_source
+        assert "gc.freeze()" in worker_source
+        assert "gc.unfreeze()" in worker_source
+        assert "thread.join()" in worker_source
+
+    def test_region_classification_is_optional(self):
+        """Users can omit classification columns to match Ariadne 0.2.0."""
+        main_py = Path(__file__).parent.parent / "src" / "ariadne_roots" / "main.py"
+        source = main_py.read_text()
+
+        assert (
+            'text="-> Run region classification (adds report columns)"'
+            in source
+        )
+        assert "self.run_classification = True" in source
+        assert "self.run_classification = run_classification_var.get()" in source
+        assert 'if getattr(self, "run_classification", True):' in source

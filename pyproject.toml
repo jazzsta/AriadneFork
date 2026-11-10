@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ariadne-roots"
-version = "2.0"
+version = "0.3"
 authors = [
   { name="Matthieu Platre", email="mattplatre@gmail.com" },
   { name="Kian Faizi", email="kian@caltech.edu" },
   { name="Elizabeth Berrigan", email="eberrigan@salk.edu" },
-  { name="Stathis Delivorias" },	
+  { name="Stathis Delivorias" },
 ]
 description = "Ariadne root tracing GUI and trait calculator."
 readme = "README.md"
@@ -42,6 +42,9 @@ dev = [
   "build",
   "ipython",
   "ruff",
+  "jupyterlab",
+  "ipykernel",
+  "nbconvert",
 ]
 
 # ---- PyPI extras for end users who opt in ----
@@ -61,6 +64,9 @@ dev = [
   "build",
   "ipython",
   "ruff",
+  "jupyterlab",
+  "ipykernel",
+  "nbconvert",
 ]
 
 [project.urls]

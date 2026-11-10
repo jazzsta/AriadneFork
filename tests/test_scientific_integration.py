@@ -18,10 +18,13 @@ from ariadne_roots.pareto_functions import (
     get_critical_nodes,
     graph_costs,
     graph_costs_3d_path_tortuosity,
-    pareto_front,
     pareto_front_3d_path_tortuosity,
-    random_tree,
+    random_steiner_wrapper_analytical,
     random_tree_3d_path_tortuosity,
+)
+from ariadne_roots.research import (
+    pareto_front,
+    random_tree_costs as random_tree,
 )
 from ariadne_roots.quantify import (
     distance_from_front,
@@ -82,38 +85,29 @@ def simple_straight_line():
 
 @pytest.fixture
 def simple_y_branch():
-    """A Y-shaped root: 0 -- 1 -- 2 and 1 -- 3.
+    """A Y-shaped root: 0 -- 1 -- 2 with a lateral branch 1 -- 3.
 
     Structure:
-                    2 (30, 0)
+                    2 (20, 0)
                    /
         0 -- 1 --
                    \\
-                    3 (20, 10)
+                    3 (10, 10)
+
+    Edge lengths are Euclidean:
+    - 0--1: 10.0
+    - 1--2: 10.0
+    - 1--3: sqrt((10 - 10)^2 + (10 - 0)^2) = 10.0
 
     Expected values (manually computed):
     - Total root length: 30.0 (10 + 10 + 10)
     - Critical nodes: [0, 2, 3] (base and two tips)
-    - Travel distance: 20.0 + 20.0 = 40.0
-    - Path tortuosity for node 2: 20 / 30 = 0.667 (distance along path / straight line)
-      Actually for tip 2: path_length=20, straight_dist=30, ratio = 20/30 = 0.667? No wait...
-      Tip 2 is at (30, 0), base at (0,0), straight distance = 30
-      Path length to tip 2 = 10 + 10 = 20
-      Tortuosity = path_length / straight_distance = 20 / 30? No, that's < 1.
-
-    Let me recalculate:
-    - Tip 2 at (30, 0): path_length = 20, straight_distance = 30
-      Tortuosity = 20/30 = 0.667 < 1? That can't be right.
-
-    Wait, I misread the structure. Let me recalculate:
-    - Node 0 at (0, 0) - base
-    - Node 1 at (10, 0) - branch point
-    - Node 2 at (30, 0) - tip 1 (but edge is from 1 to 2, so weight = 20)
-    - Node 3 at (20, 10) - tip 2 (edge from 1 to 3)
-
-    Hmm, that doesn't match "30.0 total". Let me make it simpler:
+    - Travel distance: 20.0 + 20.0 = 40.0 (tip 2: 10 + 10; tip 3: 10 + 10)
+    - Path tortuosity for tip 2: path length 20.0 / straight-line distance 20.0 = 1.0
+    - Path tortuosity for tip 3: path length 20.0 / straight-line distance
+      sqrt(10^2 + 10^2) = 1.414...
+    - Total path coverage: 1.0 + sqrt(2) = 2.414...
     """
-    # Simpler structure: equilateral-ish
     nodes = [(0, 0, 0), (1, 10, 0), (2, 20, 0), (3, 10, 10)]
     edges = [(0, 1), (1, 2), (1, 3)]
     return create_graph_with_attributes(nodes, edges)
@@ -352,24 +346,21 @@ class TestCore2DParetoFront:
     """Test pareto_front() generates correct front."""
 
     def test_front_has_expected_alpha_range(self, simple_straight_line):
-        """Verify Pareto front covers alpha from 0 to 1."""
+        """Verify the Pareto front contains valid nondominated alpha keys."""
         G = simple_straight_line
         front, actual = pareto_front(G)
 
-        # Should have entries for alpha = 0.0, 0.01, ..., 1.0
-        assert 0.0 in front, "Front should include alpha=0.0 (Satellite)"
-        assert 1.0 in front, "Front should include alpha=1.0 (Steiner)"
-
-        # Check approximate count (should be ~101 entries)
-        assert len(front) >= 100, f"Front should have ~101 entries, got {len(front)}"
+        assert front, "Front should not be empty"
+        assert 0.0 in front, "Front should include alpha=0.0"
+        assert all(0.0 <= float(alpha) <= 1.0 for alpha in front)
 
     def test_front_corners_reasonable(self, simple_y_branch):
         """Verify Steiner and Satellite corners have reasonable values."""
         G = simple_y_branch
         front, actual = pareto_front(G)
 
-        steiner = front[1.0]  # alpha=1.0 minimizes material cost
-        satellite = front[0.0]  # alpha=0.0 minimizes transport cost
+        steiner = min(front.values(), key=lambda point: point[0])
+        satellite = min(front.values(), key=lambda point: point[1])
 
         # Satellite should have higher material cost but lower transport cost
         # (or equal in degenerate cases)
@@ -531,41 +522,62 @@ class TestCore3DDistanceFromFront:
 class TestReproducibility:
     """Test that random operations are reproducible when seeded.
 
-    NOTE: random_tree() and random_tree_3d_path_tortuosity() explicitly call
-    random.seed(a=None) at the start, which resets the seed to system time.
-    This makes external seeding ineffective. The tests below document this
-    behavior and verify that the functions at least produce consistent counts.
+    The 0.3 analytical random baseline draws from NumPy's global RNG, so it is
+    reproducible when ``np.random.seed`` is reset before each call. The legacy
+    spanning-tree and 3D random generators call ``random.seed(a=None)``
+    internally, so external seeding remains ineffective for those.
     """
 
-    @pytest.mark.skip(
-        reason="random_tree() calls random.seed(a=None) internally, "
-        "making external seeding ineffective. See pareto_functions.py:927"
-    )
-    def test_random_tree_with_seed_reproducible(self, simple_y_branch):
-        """random_tree with same seed should produce identical results.
-
-        SKIPPED: This test cannot pass because random_tree() explicitly
-        reseeds with random.seed(a=None) on each call.
+    def test_random_steiner_wrapper_analytical_with_seed_reproducible(
+        self, simple_y_branch
+    ):
+        """The analytical random baseline is reproducible when NumPy is seeded.
+        ``random_steiner_wrapper_analytical`` draws alpha and every random
+        attachment from NumPy's global RNG. Resetting that seed before each
+        call must therefore reproduce identical trees and costs.
         """
         G = simple_y_branch
+        n = 10
 
-        random.seed(42)
         np.random.seed(42)
-        result1 = random_tree(G)
+        costs_1, trees_1 = random_steiner_wrapper_analytical(G, n=n)
 
-        random.seed(42)
         np.random.seed(42)
-        result2 = random_tree(G)
+        costs_2, trees_2 = random_steiner_wrapper_analytical(G, n=n)
 
-        assert len(result1) == len(result2), "Random tree counts should match"
+        assert len(costs_1) == len(costs_2) == n
+        assert len(trees_1) == len(trees_2) == n
 
-        for i, (r1, r2) in enumerate(zip(result1, result2)):
-            assert abs(r1[0] - r2[0]) < PRECISION, f"Tree {i} length mismatch"
-            assert abs(r1[1] - r2[1]) < PRECISION, f"Tree {i} distance mismatch"
+        for i, (cost_1, cost_2) in enumerate(zip(costs_1, costs_2)):
+            assert math.isclose(cost_1[0], cost_2[0], rel_tol=PRECISION), (
+                f"Tree {i} length mismatch"
+            )
+            assert math.isclose(cost_1[1], cost_2[1], rel_tol=PRECISION), (
+                f"Tree {i} distance mismatch"
+            )
+
+        for i, (tree_1, tree_2) in enumerate(zip(trees_1, trees_2)):
+            assert set(tree_1.nodes()) == set(tree_2.nodes()), (
+                f"Tree {i} node sets differ"
+            )
+
+            tree_1_edges = {frozenset(edge) for edge in tree_1.edges()}
+            tree_2_edges = {frozenset(edge) for edge in tree_2.edges()}
+            assert tree_1_edges == tree_2_edges, f"Tree {i} edges differ"
+
+            for node in tree_1.nodes():
+                pos_1 = tree_1.nodes[node]["pos"]
+                pos_2 = tree_2.nodes[node]["pos"]
+                assert math.isclose(pos_1[0], pos_2[0], abs_tol=PRECISION), (
+                    f"Tree {i} node {node} x position differs"
+                )
+                assert math.isclose(pos_1[1], pos_2[1], abs_tol=PRECISION), (
+                    f"Tree {i} node {node} y position differs"
+                )
 
     @pytest.mark.skip(
         reason="random_tree_3d_path_tortuosity() calls random.seed(a=None) internally, "
-        "making external seeding ineffective. See pareto_functions.py:976"
+        "making external seeding ineffective. See pareto_functions.py:1192"
     )
     def test_random_tree_3d_with_seed_reproducible(self, simple_y_branch):
         """random_tree_3d with same seed should produce identical results.

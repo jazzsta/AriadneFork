@@ -15,21 +15,56 @@ import io
 import json
 
 import numpy as np
+import pytest
 from networkx.readwrite import json_graph
 
 from ariadne_roots import quantify
 
 
+_ANALYSIS_CACHE = {}
+
+
+def _analyze_json(json_path):
+    """Run the 2D analysis once per path with a small random baseline."""
+    if json_path in _ANALYSIS_CACHE:
+        return _ANALYSIS_CACHE[json_path]
+
+    with open(json_path) as f:
+        data = json.load(f)
+        graph = json_graph.adjacency_graph(data)
+    results, _, _, _, _, _ = quantify.analyze(
+        graph, enable_3d=False, n_random=10
+    )
+    _ANALYSIS_CACHE[json_path] = results
+    return results
+
+
+@pytest.fixture
+def plantB_day11_results(plantB_day11_json):
+    return _analyze_json(plantB_day11_json)
+
+
+@pytest.fixture
+def matt_exp1_results(matt_etoh_exp1_plantB_day10_json):
+    return _analyze_json(matt_etoh_exp1_plantB_day10_json)
+
+
+@pytest.fixture
+def matt_exp2_results(matt_etoh_exp2_plantB_day11_json):
+    return _analyze_json(matt_etoh_exp2_plantB_day11_json)
+
+
+@pytest.fixture
+def matt_exp3_results(matt_etoh_exp3_plantE_day11_json):
+    return _analyze_json(matt_etoh_exp3_plantE_day11_json)
+
+
 class TestCSVFieldTypes:
     """Test that all CSV fields have correct Python native types."""
 
-    def test_numeric_fields_are_python_types(self, plantB_day11_json):
+    def test_numeric_fields_are_python_types(self, plantB_day11_results):
         """Verify numeric fields are Python int/float, not numpy types."""
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         # Numeric fields that should be float or int
         numeric_fields = [
@@ -69,17 +104,13 @@ class TestCSVFieldTypes:
                     value, (np.floating, np.integer)
                 ), f"{field} should not be numpy type, got {type(value)}"
 
-    def test_lr_angles_are_python_floats(self, plantB_day11_json):
+    def test_lr_angles_are_python_floats(self, plantB_day11_results):
         """Verify LR angles are Python floats, not numpy types.
 
         This is the specific bug reported by Matt Platre where CSV output
         contained np.float64(...) instead of plain numbers.
         """
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         lr_angles = results.get("LR angles", [])
         assert isinstance(lr_angles, list), "LR angles should be a list"
@@ -92,13 +123,9 @@ class TestCSVFieldTypes:
                 angle, np.floating
             ), f"LR angles[{i}] should not be np.floating, got {type(angle)}"
 
-    def test_lr_lengths_are_python_floats(self, plantB_day11_json):
+    def test_lr_lengths_are_python_floats(self, plantB_day11_results):
         """Verify LR lengths are Python floats, not numpy types."""
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         lr_lengths = results.get("LR lengths", [])
         assert isinstance(lr_lengths, list), "LR lengths should be a list"
@@ -111,13 +138,9 @@ class TestCSVFieldTypes:
                 length, np.floating
             ), f"LR lengths[{i}] should not be np.floating, got {type(length)}"
 
-    def test_lr_minimal_lengths_are_python_floats(self, plantB_day11_json):
+    def test_lr_minimal_lengths_are_python_floats(self, plantB_day11_results):
         """Verify LR minimal lengths are Python floats, not numpy types."""
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         lr_minimal_lengths = results.get("LR minimal lengths", [])
         assert isinstance(
@@ -136,13 +159,9 @@ class TestCSVFieldTypes:
 class TestCSVFieldRanges:
     """Test that CSV fields have expected value ranges."""
 
-    def test_positive_length_fields(self, plantB_day11_json):
+    def test_positive_length_fields(self, plantB_day11_results):
         """Verify length fields are non-negative."""
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         positive_fields = [
             "Total root length",
@@ -157,13 +176,9 @@ class TestCSVFieldRanges:
             if value is not None:
                 assert value >= 0, f"{field} should be non-negative, got {value}"
 
-    def test_lr_angles_in_valid_range(self, plantB_day11_json):
+    def test_lr_angles_in_valid_range(self, plantB_day11_results):
         """Verify LR angles are between 0 and 180 degrees."""
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         lr_angles = results.get("LR angles", [])
         for i, angle in enumerate(lr_angles):
@@ -179,13 +194,9 @@ class TestCSVFieldRanges:
                 0 <= median_angle <= 180
             ), f"Median LR angles = {median_angle} out of range"
 
-    def test_density_fields_non_negative(self, plantB_day11_json):
+    def test_density_fields_non_negative(self, plantB_day11_results):
         """Verify density fields are non-negative."""
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         if results.get("LR density") is not None:
             assert results["LR density"] >= 0, "LR density should be non-negative"
@@ -195,13 +206,9 @@ class TestCSVFieldRanges:
                 results["Branched Zone density"] >= 0
             ), "Branched Zone density should be non-negative"
 
-    def test_alpha_in_valid_range(self, plantB_day11_json):
+    def test_alpha_in_valid_range(self, plantB_day11_results):
         """Verify alpha is between 0 and 1."""
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         alpha = results.get("alpha")
         if alpha is not None:
@@ -211,17 +218,13 @@ class TestCSVFieldRanges:
 class TestCSVSerialization:
     """Test that CSV serialization produces clean output."""
 
-    def test_csv_contains_no_numpy_types(self, plantB_day11_json):
+    def test_csv_contains_no_numpy_types(self, plantB_day11_results):
         """Verify CSV output contains no numpy type representations.
 
         This is the core test for the bug Matt reported where CSV files
         contained 'np.float64(...)' instead of plain numbers.
         """
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         # Serialize to CSV
         output = io.StringIO()
@@ -238,13 +241,9 @@ class TestCSVSerialization:
         assert "np.int64" not in csv_content, "CSV contains np.int64"
         assert "numpy" not in csv_content.lower(), "CSV contains numpy reference"
 
-    def test_array_fields_serialize_cleanly(self, plantB_day11_json):
+    def test_array_fields_serialize_cleanly(self, plantB_day11_results):
         """Verify array fields serialize as readable lists, not numpy arrays."""
-        with open(plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = plantB_day11_results
 
         # Check string representation of array fields
         for field in ["LR angles", "LR lengths", "LR minimal lengths"]:
@@ -267,13 +266,9 @@ class TestMattPlatreData:
     actual data that exposed the bug.
     """
 
-    def test_matt_exp1_no_numpy_types(self, matt_etoh_exp1_plantB_day10_json):
+    def test_matt_exp1_no_numpy_types(self, matt_exp1_results):
         """Verify EtOH EXP1 data has no numpy types in results."""
-        with open(matt_etoh_exp1_plantB_day10_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = matt_exp1_results
 
         # Check LR angles specifically (the field Matt reported)
         for i, angle in enumerate(results.get("LR angles", [])):
@@ -286,13 +281,9 @@ class TestMattPlatreData:
         writer.writerow(results)
         assert "np.float64" not in output.getvalue()
 
-    def test_matt_exp2_no_numpy_types(self, matt_etoh_exp2_plantB_day11_json):
+    def test_matt_exp2_no_numpy_types(self, matt_exp2_results):
         """Verify EtOH EXP2 data has no numpy types in results."""
-        with open(matt_etoh_exp2_plantB_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = matt_exp2_results
 
         # Check LR angles specifically (the field Matt reported)
         for i, angle in enumerate(results.get("LR angles", [])):
@@ -305,13 +296,9 @@ class TestMattPlatreData:
         writer.writerow(results)
         assert "np.float64" not in output.getvalue()
 
-    def test_matt_exp3_no_numpy_types(self, matt_etoh_exp3_plantE_day11_json):
+    def test_matt_exp3_no_numpy_types(self, matt_exp3_results):
         """Verify EtOH EXP3 data (largest file) has no numpy types in results."""
-        with open(matt_etoh_exp3_plantE_day11_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = matt_exp3_results
 
         # Check LR angles specifically (the field Matt reported)
         for i, angle in enumerate(results.get("LR angles", [])):
@@ -324,13 +311,9 @@ class TestMattPlatreData:
         writer.writerow(results)
         assert "np.float64" not in output.getvalue()
 
-    def test_matt_data_valid_ranges(self, matt_etoh_exp1_plantB_day10_json):
+    def test_matt_data_valid_ranges(self, matt_exp1_results):
         """Verify Matt's data produces valid ranges for all fields."""
-        with open(matt_etoh_exp1_plantB_day10_json) as f:
-            data = json.load(f)
-            graph = json_graph.adjacency_graph(data)
-
-        results, _, _, _, _, _ = quantify.analyze(graph, enable_3d=False)
+        results = matt_exp1_results
 
         # LR angles should be 0-180
         for angle in results.get("LR angles", []):

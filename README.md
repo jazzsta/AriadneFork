@@ -1,8 +1,9 @@
-# Ariadne
+# Ariadne 0.3
 
 [![Stable version](https://img.shields.io/pypi/v/ariadne-roots?label=stable "Stable version")](https://pypi.org/project/ariadne-roots/)
 [![Latest pre-release](https://img.shields.io/github/v/release/Salk-Harnessing-Plants-Initiative/Ariadne?include_prereleases&label=pre-release)](https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/releases)
 
+**Current development version:** `0.3`
 
 🌱 is a small software package for analyzing images of _Arabidopsis thaliana_ roots.
 
@@ -28,10 +29,11 @@
 
 📚 **Detailed documentation for scientists and developers:**
 
-| Document | Description |
-|----------|-------------|
-| [Scientific Methods](docs/scientific-methods.md) | Pareto optimality calculations, mathematical formulas, and academic references |
-| [Output Fields Reference](docs/output-fields.md) | Complete reference for all CSV output fields with units and interpretation |
+| Document | Description                                                                     |
+|----------|---------------------------------------------------------------------------------|
+| [Scientific Methods](docs/scientific-methods.md) | Pareto optimality calculations, mathematical formulas, and academic references  |
+| [Output Fields Reference](docs/output-fields.md) | Complete reference for all CSV output fields with units and interpretation      |
+| [Ariadne 0.3 Research Notebook](Ariadne0.3_Exploration.ipynb) | Reproducible pareto fronts, random null models and sampling figures |
 
 For citing the underlying methods, see the [References](#references) section or the [Scientific Methods](docs/scientific-methods.md) documentation.
 
@@ -39,6 +41,8 @@ For citing the underlying methods, see the [References](#references) section or 
 
 Ariadne is installed as a Python package called `ariadne-roots`. We recommend using a package manager and creating an isolated environment for `ariadne-roots` and its dependencies.
 You can find the latest version of `ariadne-roots` on the [Releases](https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne/releases) page.
+
+> **Version note:** the repository contains the Ariadne **0.3** development line. The PyPI commands below install the latest published release, which may be older. To use the 0.3 code, clone the repository and use the development workflow with `uv sync` described below.
 
 
 ## Installation (Users)
@@ -124,8 +128,7 @@ This is ideal if you want to:
 
 ---
 
-
-## Usage
+## Launching Ariadne
 
 ### If installed in a local environment (Option 1)
 Activate the environment and run:
@@ -228,11 +231,13 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
 
     <img src="assets/Welcome.png" width="400" height="250">
 
-    - **Set scaling parameters** (optional):
-        - A dialog will appear asking you to configure measurement units
-        - Enter the conversion factor (e.g., if 1 pixel = 2.5 mm, enter `1` for pixels and `2.5` for distance)
-        - Select or enter the unit name (e.g., "mm", "cm", "µm")
-        - Click "OK" to continue, or "Cancel" to use default (pixels)
+    - **Set analysis settings** (optional):
+        - **Scale:** enter the pixel distance and corresponding real distance, then choose a unit (e.g. `mm`, `cm`, `µm`).
+        - **3D Pareto:** enable *“-> Add path tortuosity to Pareto (3D, slower)”* to add path coverage as a third objective.
+        - **Region classification:** enabled by default via *“-> Run region classification (adds report columns)”*. It estimates how much greedy optimization and which trade-off direction best describe each root.
+        - **Classification samples:** number of semi-random architectures sampled per root (default `5000`).
+        - **Region factor:** size of the target ellipse around the actual tree (default `0.5`).
+        - Click **OK** to continue, or **Cancel** to keep the default values.
     - **Select input files**:
         - Choose the .json files to analyze from "location_1"
         - An info dialog will confirm the number of files selected
@@ -240,13 +245,19 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
         - Choose "location_2" for the output
         - The software will analyze all selected files and save results
     - **Completion**:
-        - A dialog will show where the results were saved (CSV report and Pareto plots)
+        - A dialog will show where the results were saved (CSV report, Pareto plots, and HTML reports)
 
 ### Results
 
 - In the output folder you selected, you will find:
-    - A Pareto optimality plot for each root (PNG format)
-    - A timestamped CSV file (e.g., `report_20241110_153045.csv`) storing all RSA traits for each root
+    - A Pareto optimality plot for each root in **PNG**, **SVG**, and interactive **HTML** format.
+    - A 3D Pareto plot in **PNG** and **SVG** format when 3D analysis is enabled.
+    - An interactive region-sampling **HTML** report when region classification is enabled.
+    - A timestamped CSV file (e.g., `report_20241110_153045.csv`) storing all RSA traits for each root.
+    - A separate `report_3d_*.csv` when 3D analysis is enabled.
+    - A shared `plotly.min.js` used by the interactive HTML reports.
+
+**Note on classification:** If *"-> Run region classification (adds report columns)"* is unchecked, the six classification columns are omitted from the CSV and no sampling HTML is generated. The report then keeps the Ariadne 0.2.0 2D column set.
 
 **Note on Units:** If you configured scaling during analysis, all length measurements in the CSV and plots will be in your specified units (e.g., mm, cm). Otherwise, measurements are in pixels.
 
@@ -256,10 +267,14 @@ The RSA traits included in the CSV are
 - **Travel distance:** Sum of the length from the hypocotyl to each root tip (Pareto related trait)
 - **Alpha:** Trade-off value between growth and transport efficiency (Pareto related trait)
 - **Scaling distance to front:** Pareto optimality value (Pareto related trait)
-- **Total root length (random):** Random total root length
-- **Travel distance (random):** Random sum of the length from the hypocotyl to each root tip (Pareto related trait)
-- **Alpha (random):** Random trade-off value between growth and transport efficiency (Pareto related trait)
-- **Scaling distance to front (random):** Random Pareto optimality value (Pareto related trait)
+- **Total root length (random):** Mean total root length of the randomized analytical baseline
+- **Travel distance (random):** Mean travel distance of the randomized analytical baseline (Pareto related trait)
+- **Alpha (random):** Trade-off value for the mean randomized analytical baseline (Pareto related trait)
+- **Scaling distance to front (random):** Pareto optimality value for the mean randomized analytical baseline (Pareto related trait)
+- **Tradeoff:** Ratio-based comparison of the actual root to the Steiner (length-optimal) and Satellite (transport-optimal) reference architectures
+- **Steiner_length / Steiner_distance:** Cost of the length-optimal architecture on the front
+- **Satellite_length / Satellite_distance:** Cost of the transport-optimal architecture on the front
+- **Actual_ratio / Optimal_ratio:** Ratios used to compute the Tradeoff metric
 - **PR length:** Length of the primary root
 - **PR minimal length:** Euclidean distance from the hypocotyl to the primary root tip
 - **Basal zone length:** length from the hypocotyl to the insertion of the first lateral root along the primary root 
@@ -285,7 +300,7 @@ The RSA traits included in the CSV are
 
 #### 3D Pareto Analysis Fields (Optional)
 
-When **"Add path tortuosity to Pareto (3D, slower)"** is enabled during analysis, additional fields are computed that include path coverage as a third objective:
+When **"-> Add path tortuosity to Pareto (3D, slower)"** is enabled during analysis, additional fields are computed that include path coverage as a third objective:
 
 - **Path tortuosity:** Sum of tortuosity values for all root paths
 - **alpha_3d, beta_3d, gamma_3d:** Interpolated Pareto weights (α + β + γ = 1)
@@ -294,6 +309,17 @@ When **"Add path tortuosity to Pareto (3D, slower)"** is enabled during analysis
 - **Corner costs (Steiner/Satellite/Coverage):** Reference values for optimal architectures at each corner of the Pareto surface
 
 For complete field descriptions, see the [Output Fields Reference](docs/output-fields.md).
+
+#### Region Classification Fields (Optional)
+
+When **“-> Run region classification (adds report columns)”** is enabled, six dimensionless fields are added to the 2D report:
+
+- **mean_rounds_normalized:** Weighted mean optimization level of the sampled architectures inside the target region, normalized to `[0, 1]`.
+- **ci_low_normalized / ci_high_normalized:** Confidence interval for the normalized mean optimization level.
+- **local_mean_alpha:** Weighted mean trade-off direction α of the sampled architectures inside the target region.
+- **local_alpha_ci_low / local_alpha_ci_high:** Confidence interval for the local α.
+
+These fields are computed from semi-random architectures sampled around the actual straightened RSA. They answer “how much greedy optimization would be needed to reach this root’s Pareto costs?” and “which α best describes its local position?”.
 
 ##### Keybinds
 * `Left-click`: place/select node. 
@@ -311,6 +337,78 @@ For complete field descriptions, see the [Output Fields Reference](docs/output-f
 * `Ctrl-Z`: Undo last action
 
 
+## Research Notebook (Ariadne 0.3)
+
+The notebook `Ariadne0.3_Exploration.ipynb` reproduces the scientific workflow and figures in *Road to Ariadne 0.3*: straightening, tip preservation, fixed-spacing versus analytical fronts, random null models, the optimization landscape, and sampling-based classification.
+
+By default it loads `tests/data/_set1_day1_20230320-154926_001_EtOH_EXP2_plantB_day11.json`. Change `GRAPH_PATH` in the setup cell to analyze another example.
+
+### Setup
+
+From the cloned repository:
+
+```sh
+cd Ariadne
+uv sync
+```
+
+`uv sync` creates the project `.venv` and installs the runtime dependencies plus the `dev` group, including:
+
+- `jupyterlab`
+- `ipykernel`
+- `nbconvert`
+- `numpy`, `scipy`, `matplotlib`, `networkx`, and `plotly`
+
+### Run interactively
+
+```sh
+uv run jupyter lab --no-browser
+```
+
+Jupyter will print a URL in the terminal, typically:
+
+```text
+http://127.0.0.1:8888/lab?token=...
+```
+
+Open that URL directly in your browser, or use:
+
+```text
+http://localhost:8888/lab/tree/Ariadne0.3_Exploration.ipynb
+```
+
+`--no-browser` avoids Jupyter trying to open its local `jpserver-*-open.html` helper file, which may be blocked by Windows permissions.
+
+If Windows also blocks Jupyter’s runtime directory, point it to a project-local folder:
+
+```sh
+$env:JUPYTER_RUNTIME_DIR = Join-Path $PWD ".jupyter-runtime"
+New-Item -ItemType Directory -Force $env:JUPYTER_RUNTIME_DIR | Out-Null
+uv run jupyter lab --no-browser
+```
+
+Open `Ariadne0.3_Exploration.ipynb` and select the Python kernel from the project `.venv`. If it is not listed, register it once:
+
+```sh
+uv run python -m ipykernel install --user --name ariadne-0.3 --display-name "Ariadne 0.3 (.venv)"
+```
+
+Then select **Ariadne 0.3 (.venv)** in Jupyter.
+
+### Run headlessly
+
+```sh
+uv run jupyter nbconvert --to notebook --execute --inplace Ariadne0.3_Exploration.ipynb
+```
+
+To preserve the unexecuted notebook:
+
+```sh
+uv run jupyter nbconvert --to notebook --execute Ariadne0.3_Exploration.ipynb --output Ariadne0.3_Exploration_executed.ipynb
+```
+
+The publication-scale settings are declared at the top of the notebook. Reduce `N_MST`, `N_TOPDOWN`, `N_BOTTOMUP`, `N_ANALYTICAL`, `N_LANDSCAPE`, and `N_SAMPLES` for a faster exploratory run.
+
 ## Contributing
 Follow these steps to set up your development environment and start making contributions to the project.
 
@@ -323,7 +421,7 @@ Follow these steps to set up your development environment and start making contr
 
 2. **Clone the repository**
     ```sh
-    git clone https//github.com/Salk-Harnessing-Plants-Initiative/Ariadne.git
+    git clone https://github.com/Salk-Harnessing-Plants-Initiative/Ariadne.git
     ```
 
 3. **Navigate to the root of the cloned repository**
@@ -387,9 +485,18 @@ uv run ruff check .
 
 # Run the CLI
 uv run ariadne-trace
+
+# Launch the Ariadne 0.3 research notebook
+uv run jupyter lab --no-browser
 ```
 
 **Cross-platform:** `uv run` works on Linux, macOS, and Windows without needing venv activation.
+
+For the research notebook, select the Python kernel from the project `.venv` when Jupyter opens. If it is not listed, register it once:
+
+```bash
+uv run python -m ipykernel install --user --name ariadne-0.3 --display-name "Ariadne 0.3 (.venv)"
+```
 
 ---
 
@@ -620,6 +727,7 @@ To release a new package, follow these instructions:
 - Kian Faizi
 - Matthieu Platre
 - Elizabeth Berrigan
+- Stathis Delivorias
 
 ## Contact
 

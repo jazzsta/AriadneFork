@@ -584,8 +584,8 @@ def best_small_edge_attachment(G, H, out_nodes, alpha, min_length):
 
 
 def pareto_steiner_fast_analytical_preserve_tips_semi_random(
-        G, alpha=None, min_length_factor=0.5, spacing_factor=1.0,
-        optimization_rounds=0, length_weighted=True, verbose=False, record=False):
+        G, alpha=None, min_length_factor=0.5,
+        optimization_rounds=0, verbose=False, record=False):
     """
     Continuous (analytical) Pareto Steiner tree with tip preservation.
 
@@ -753,10 +753,10 @@ def pareto_steiner_fast_analytical_preserve_tips_semi_random(
     return H
 
 
-def pareto_steiner_fast_analytical_preserve_tips_full_greedy(
+def pareto_steiner_fast(
     G, alpha, **kwargs
 ):
-    """Run the randomized analytical generator in fully greedy mode.
+    """Run the semi-randomized analytical generator in fully greedy mode.
 
     ``optimization_rounds`` is set to the total number of tips plus the base,
     so every decision is greedy. This is the UI's replacement for the separate
@@ -1227,28 +1227,22 @@ def random_tree_3d_path_tortuosity(G):
     return costs
 
 
-def pareto_front_generic(
-    G, steiner_function, semi_random=False, tree_payloads=None
-):
-    """
-    Compute Pareto front using any steiner function.
+def pareto_front(G, tree_payloads=None):
+    """Given a graph G, compute the Pareto front of optimal solutions for the wiring cost and conduction delay.
+
+    The front is computed with :func:`pareto_steiner_fast` for every alpha in
+    ``DEFAULT_ALPHAS``.  Alpha controls the trade-off between wiring cost and
+    conduction delay: lower alpha favours short travel distance, while higher
+    alpha favours short total root length.
 
     Args:
-        G: Input graph
-        steiner_function: Function that takes (G, alpha) and returns a tree.
-            When ``semi_random`` is True it must also accept the
-            ``optimization_rounds`` keyword.
-        semi_random: If True, evaluate one fully optimized tree per alpha and
-            four randomized trees (uniform alpha and 80-100% of the available
-            optimization rounds) to refine the front. Trees that do not contain
-            every original critical node are discarded.
+        G (nx.Graph): The graph to compute the Pareto front for
         tree_payloads: Optional mutable dict. When provided, it is filled with
-            compact geometry payloads keyed by the same alpha keys as ``front``
-            so HTML reports can draw a tree for each front point.
-
+        compact geometry payloads keyed by the same alpha keys as ``front``
+        so HTML reports can draw a tree for each front point.
     Returns:
-        front: dict mapping alpha -> [wiring, travel]
-        actual: tuple (wiring, travel) for the straightened tree
+        front (dict): A dictionary of edge_lengths, travel_distances_to_base for each alpha value on the front
+        actual (tuple): The actual total_root_length, total_travel_distance of the original plant
     """
     for u, v in G.edges():
         if 'weight' not in G[u][v]:
@@ -1262,13 +1256,10 @@ def pareto_front_generic(
 
     front = {}
 
-    required_nodes = set(critical_nodes)
     serialize_tree = _tree_hover_payload if tree_payloads is not None else None
 
     def add_tree(key, tree):
         if tree is None:
-            return
-        if semi_random and not required_nodes.issubset(tree.nodes):
             return
         total_root_length, total_travel_distance = graph_costs(
             tree, critical_nodes=critical_nodes
@@ -1278,34 +1269,10 @@ def pareto_front_generic(
             tree_payloads[key] = serialize_tree(tree, None, None)
 
     for alpha in DEFAULT_ALPHAS:
-        if semi_random:
-            H = steiner_function(
-                G, alpha, optimization_rounds=len(critical_nodes)
-            )
-            add_tree(alpha, H)
-
-            # A few randomized runs per alpha catch points that the greedy
-            # construction misses. Most decisions remain greedy (80-100% of
-            # the available rounds); only the tail of the construction is
-            # randomized.
-            for _ in range(4):
-                lambda_value = np.random.uniform(0.8, 1.0)
-                alpharandom = np.random.uniform(0, 1.0)
-                H_rand = steiner_function(
-                    G,
-                    alpharandom,
-                    optimization_rounds=lambda_value * len(critical_nodes),
-                )
-                add_tree(alpharandom, H_rand)
-        else:
-            H = steiner_function(G, alpha)
-            add_tree(alpha, H)
+        H = pareto_steiner_fast(G, alpha)
+        add_tree(alpha, H)
 
     return clean_pareto_front(front), actual
-
-
-
-
 
 
 def clean_pareto_front(front):
@@ -1357,7 +1324,7 @@ def _tree_hover_payload(tree, rounds, alpha):
 def random_steiner_wrapper_analytical(G, n, optimization_rounds=0):
     """Random baseline using the analytical tip-preserving Steiner generator.
 
-    This is the 2.0 UI baseline: it uses the same continuous (analytical)
+    This is the 0.3 UI baseline: it uses the same continuous (analytical)
     attachment rule as the optimal front, with ``optimization_rounds=0`` so
     every connection is drawn randomly.
     """

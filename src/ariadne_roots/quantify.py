@@ -19,10 +19,10 @@ from pathlib import Path
 from scipy.spatial import ConvexHull  # Import ConvexHull class
 from matplotlib.colors import hsv_to_rgb, LinearSegmentedColormap, to_hex
 from matplotlib.patches import Rectangle
+from networkx.readwrite import json_graph
 
 from ariadne_roots.pareto_functions import (
-    pareto_front_generic,
-    pareto_steiner_fast_analytical_preserve_tips_full_greedy,
+    pareto_front,
     pareto_steiner_fast_analytical_preserve_tips_semi_random,
     pareto_front_3d_path_tortuosity,
     random_tree_3d_path_tortuosity,
@@ -56,6 +56,25 @@ logging.basicConfig(
 
 
 
+
+
+def get_graph_from_json(json_file):
+    """Load a JSON file and convert it to a NetworkX graph.
+
+    Args:
+        json_file (str or Path): Path to the JSON file.
+
+    Returns:
+        nx.Graph: A NetworkX graph object, converted to undirected if needed.
+    """
+    with open(json_file, mode="r", encoding="utf-8") as handle:
+        data = json.load(handle)
+        graph = json_graph.adjacency_graph(data)
+
+    if graph.is_directed():
+        graph = graph.to_undirected()
+
+    return graph
 
 
 def calc_len_PR(G, root_node):
@@ -965,9 +984,8 @@ def pareto_calcs(H, n_random=DEFAULT_N_RANDOM, tree_payloads=None):
 
     front_tree_payloads = {} if tree_payloads is not None else None
 
-    front, actual = pareto_front_generic(
+    front, actual = pareto_front(
         H_pareto,
-        pareto_steiner_fast_analytical_preserve_tips_full_greedy,
         tree_payloads=front_tree_payloads,
     )
 
@@ -2094,9 +2112,7 @@ def estimate_rounds_for_region(G, n_samples=5000, region_factor=0.5,
     if front is None or actual is None:
         if verbose:
             print("Computing Pareto front...")
-        front, actual = pareto_front_generic(
-            H, pareto_steiner_fast_analytical_preserve_tips_full_greedy
-        )
+        front, actual = pareto_front(H)
 
     from ariadne_roots.quantify import distance_from_front
     _, scaling_distance = distance_from_front(front, actual)
