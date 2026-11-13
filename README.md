@@ -45,7 +45,7 @@ You can find the latest version of `ariadne-roots` on the [Releases](https://git
 > **Version note — Ariadne 0.3 is not on PyPI yet.** The `pip`, `uv add`, and `uvx` commands below install the older PyPI release (0.2.x), not Ariadne 0.3. To install 0.3, clone the repository and run it from source:
 >
 > ```sh
-> git clone --branch v0.3 https://github.com/jazzsta/AriadneFork.git
+> git clone https://github.com/jazzsta/AriadneFork.git
 > cd AriadneFork
 > uv sync
 > uv run ariadne-trace
