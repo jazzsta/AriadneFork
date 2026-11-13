@@ -1283,7 +1283,7 @@ def clean_pareto_front(front):
     """
     points = [(alpha, w, t) for alpha, (w, t) in front.items()]
     # Sort by wiring ascending
-    points.sort(key=lambda x: x[1])
+    points.sort(key=lambda x: (x[1], x[2]))
 
     cleaned = {}
     best_travel = float('inf')
