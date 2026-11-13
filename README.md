@@ -42,7 +42,14 @@ For citing the underlying methods, see the [References](#references) section or 
 Ariadne is installed as a Python package called `ariadne-roots`. We recommend using a package manager and creating an isolated environment for `ariadne-roots` and its dependencies.
 You can find the latest version of `ariadne-roots` on the [Releases](https://github.com/jazzsta/AriadneFork/releases) page.
 
-> **Version note:** the repository contains the Ariadne **0.3** development line. The PyPI commands below install the latest published release, which may be older. To use the 0.3 code, clone the repository and use the development workflow with `uv sync` described below.
+> **Version note — Ariadne 0.3 is not on PyPI yet.** The `pip`, `uv add`, and `uvx` commands below install the older PyPI release (0.2.x), not Ariadne 0.3. To install 0.3, clone the repository and run it from source:
+>
+> ```sh
+> git clone --branch v0.3 https://github.com/jazzsta/AriadneFork.git
+> cd AriadneFork
+> uv sync
+> uv run ariadne-trace
+> ```
 
 
 ## Installation (Users)
@@ -63,9 +70,10 @@ To verify tkinter is available: `python -c "import tkinter"`
 
 **Note:** If you use `uv` to manage Python (recommended), tkinter is already included and requires no separate installation.
 
-There are three main ways to install and run Ariadne:
 
 ---
+
+There are three main ways to install and run the PyPI release (currently 0.2.x):
 
 ### Option 1. Local Environment
 
@@ -174,6 +182,7 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
     pip install --pre ariadne-roots  # Use --pre to include pre-release versions
     ```
     - Omit the `--pre` flag if you only want to install stable releases.
+    - **This installs the PyPI release (0.2.x), not Ariadne 0.3.** To use 0.3, clone the repository and run `uv sync` as described in the version note at the top of the installation section.
 
 
 ## Usage
