@@ -36,6 +36,7 @@ from ariadne_roots.quantify import (
     find_lowermost_node_of_primary_root,
     analyze,
     save_pareto_html,
+    split_analysis_results,
 )
 from ariadne_roots.legacy import calculate_convex_hull_area
 
@@ -217,29 +218,25 @@ def test_calc_len_LRs_nonzero_start_index(issue26_root_json):
 
 
 def test_calc_zones_with_lateral_roots(simple_lateral_root_graph):
-    """Test zone calculation with lateral roots present."""
+    """Test zone boundaries when the only LR insertion is at primary-root node 1.
+
+    The insertion segment belongs to the preceding zone: 0->1 is basal and
+    1->2 is apical. With only one insertion, branched length is zero.
+    """
     zones = calc_zones(simple_lateral_root_graph, root_node=0)
 
-    assert "branched_zone_length" in zones
-    assert "basal_zone_length" in zones
-    assert "apical_zone_length" in zones
-
-    # All zones should be non-negative
-    assert zones["branched_zone_length"] >= 0
-    assert zones["basal_zone_length"] >= 0
-    assert zones["apical_zone_length"] >= 0
+    assert zones["basal_zone_length"] == 10.0
+    assert zones["branched_zone_length"] == 0.0
+    assert zones["apical_zone_length"] == 10.0
 
 
 def test_calc_zones_no_lateral_roots(simple_linear_graph):
-    """Test zone calculation with no lateral roots."""
+    """With no LR insertions, the whole primary root is basal."""
     zones = calc_zones(simple_linear_graph, root_node=0)
 
-    # With no LR insertions, basal zone should be entire PR
-    # Branched and apical should be 0
-    assert zones["branched_zone_length"] == 0
-    assert zones["apical_zone_length"] == 0
-    # Basal zone should be close to total length
-    assert zones["basal_zone_length"] >= 0
+    assert zones["basal_zone_length"] == 20.0
+    assert zones["branched_zone_length"] == 0.0
+    assert zones["apical_zone_length"] == 0.0
 
 
 # ========== Test calculate_convex_hull_area() ==========
@@ -465,13 +462,13 @@ def test_calculate_tradeoff_calculation():
 
     result = calculate_tradeoff(front, actual)
 
-    # Actual_ratio = 50/50 = 1.0
-    assert math.isclose(result["Actual_ratio"], 1.0, rel_tol=1e-8)
+    # Length_ratio = actual_length / steiner_length = 50/10 = 5.0
+    assert math.isclose(result["Length_ratio"], 5.0, rel_tol=1e-8)
 
-    # Optimal_ratio = steiner_length / satellite_distance = 10/10 = 1.0
-    assert math.isclose(result["Optimal_ratio"], 1.0, rel_tol=1e-8)
+    # Distance_ratio = actual_distance / satellite_distance = 50/10 = 5.0
+    assert math.isclose(result["Distance_ratio"], 5.0, rel_tol=1e-8)
 
-    # Tradeoff = actual_ratio / optimal_ratio = 1.0/1.0 = 1.0
+    # Tradeoff = Length_ratio / Distance_ratio = 5.0/5.0 = 1.0
     assert math.isclose(result["Tradeoff"], 1.0, rel_tol=1e-8)
 
 
@@ -491,15 +488,15 @@ def test_calculate_tradeoff_all_fields_present():
         "Steiner_distance",
         "Satellite_length",
         "Satellite_distance",
-        "Actual_ratio",
-        "Optimal_ratio",
+        "Length_ratio",
+        "Distance_ratio",
     ]
     for field in expected_fields:
         assert field in result, f"Missing field: {field}"
 
 
 def test_calculate_tradeoff_division_by_zero_actual():
-    """Test handling of division by zero when actual distance is 0."""
+    """Test handling when the actual tree has zero travel distance."""
     front = {
         0.0: [100, 10],
         1.0: [10, 100],
@@ -509,8 +506,9 @@ def test_calculate_tradeoff_division_by_zero_actual():
 
     result = calculate_tradeoff(front, actual)
 
-    # Should handle gracefully
-    assert result["Actual_ratio"] is None
+    # Length_ratio is still computable; Distance_ratio is zero.
+    assert result["Length_ratio"] == 5.0
+    assert result["Distance_ratio"] == 0.0
     assert result["Tradeoff"] is None
     # Other values should still be calculated
     assert result["Steiner_length"] == 10
@@ -527,17 +525,17 @@ def test_calculate_tradeoff_division_by_zero_satellite():
 
     result = calculate_tradeoff(front, actual)
 
-    # Should handle gracefully - optimal_ratio cannot be computed
-    assert result["Optimal_ratio"] is None
+    # Should handle gracefully - Distance_ratio cannot be computed
+    assert result["Length_ratio"] == 5.0
+    assert result["Distance_ratio"] is None
     assert result["Tradeoff"] is None
     # Other values should still be calculated
     assert result["Steiner_length"] == 10
     assert result["Satellite_distance"] == 0
-    assert result["Actual_ratio"] == 1.0
 
 
 def test_calculate_tradeoff_zero_steiner_length():
-    """Test handling when steiner_length is 0 (optimal_ratio would be 0)."""
+    """Test handling when the Steiner length is 0."""
     front = {
         0.0: [100, 10],
         1.0: [0, 100],  # Steiner point with zero length
@@ -546,13 +544,13 @@ def test_calculate_tradeoff_zero_steiner_length():
 
     result = calculate_tradeoff(front, actual)
 
-    # optimal_ratio = 0 / 10 = 0, so tradeoff cannot be computed (division by zero)
-    assert result["Optimal_ratio"] == 0.0
+    # Length_ratio cannot be computed; Distance_ratio is still valid.
+    assert result["Length_ratio"] is None
+    assert result["Distance_ratio"] == 5.0
     assert result["Tradeoff"] is None
     # Other values should still be calculated
     assert result["Steiner_length"] == 0
     assert result["Satellite_distance"] == 10
-    assert result["Actual_ratio"] == 1.0
 
 
 def test_calculate_tradeoff_empty_front():
@@ -568,8 +566,8 @@ def test_calculate_tradeoff_empty_front():
     assert result["Steiner_distance"] is None
     assert result["Satellite_length"] is None
     assert result["Satellite_distance"] is None
-    assert result["Actual_ratio"] is None
-    assert result["Optimal_ratio"] is None
+    assert result["Length_ratio"] is None
+    assert result["Distance_ratio"] is None
 
 
 def test_calculate_tradeoff_returns_python_floats():
@@ -589,8 +587,8 @@ def test_calculate_tradeoff_returns_python_floats():
         "Steiner_distance",
         "Satellite_length",
         "Satellite_distance",
-        "Actual_ratio",
-        "Optimal_ratio",
+        "Length_ratio",
+        "Distance_ratio",
     ]:
         assert type(result[field]) is float, f"{field} should be Python float"
 
@@ -777,30 +775,38 @@ def test_distance_large_coords():
     assert math.isclose(dist, expected, rel_tol=1e-8)
 
 
-def test_calc_zones_single_lateral_root():
-    """Test zone calculation with exactly one LR at attachment point."""
-    G = nx.Graph()
-    # Primary root: 0 -> 1 -> 2 -> 3
-    G.add_node(0, pos=(0, 0), LR_index=None)
-    G.add_node(1, pos=(0, 10), LR_index=None)
-    G.add_node(2, pos=(0, 20), LR_index=None)
-    G.add_node(3, pos=(0, 30), LR_index=None)
-    # Single LR at node 1
-    G.add_node(4, pos=(5, 10), LR_index=0)
+# ========== CSV report split ==========
 
-    G.add_edge(0, 1)
-    G.add_edge(1, 2)
-    G.add_edge(2, 3)
-    G.add_edge(1, 4)
 
-    zones = calc_zones(G, root_node=0)
+def test_split_analysis_results_separates_digitized_and_pareto_fields():
+    """Digitized costs go to the RSA report; straightened costs to Pareto."""
+    results = {
+        "Total root length (digitized)": 100.0,
+        "Travel distance (digitized)": 250.0,
+        "PR length": 50.0,
+        "LR count": 4,
+        "Total root length": 80.0,
+        "Travel distance": 220.0,
+        "alpha": 0.4,
+        "scaling distance to front": 1.1,
+        "Length_ratio": 1.2,
+        "Distance_ratio": 1.05,
+    }
 
-    # Should have some branched zone where LR is attached
-    assert zones["branched_zone_length"] >= 0
-    # Should have basal zone before first LR
-    assert zones["basal_zone_length"] >= 0
-    # Should have apical zone after last LR
-    assert zones["apical_zone_length"] >= 0
+    rsa_results, pareto_results = split_analysis_results(results)
+
+    assert rsa_results["Total root length"] == 100.0
+    assert rsa_results["Travel distance"] == 250.0
+    assert rsa_results["PR length"] == 50.0
+    assert rsa_results["LR count"] == 4
+    assert "Total root length (straightened)" not in rsa_results
+
+    assert pareto_results["Total root length (straightened)"] == 80.0
+    assert pareto_results["Travel distance (straightened)"] == 220.0
+    assert pareto_results["alpha"] == 0.4
+    assert pareto_results["Length_ratio"] == 1.2
+    assert "Total root length" not in pareto_results
+    assert "Travel distance" not in pareto_results
 
 
 # ========== Integration Test (existing) ==========
@@ -825,11 +831,21 @@ def test_analyze(
         )
 
         # check the results
-        assert len(results) == 38  # 31 original + 7 tradeoff fields
+        assert len(results) == 40  # 31 original + 2 digitized + 7 tradeoff fields
         # Random values are not tested here
         # Scalar assertions
         assert isclose(results["Total root length"], 12785.077747551752, rel_tol=1e-8)
         assert isclose(results["Travel distance"], 33630.945442187534, rel_tol=1e-8)
+        assert isclose(
+            results["Total root length (digitized)"],
+            13196.309446355745,
+            rel_tol=1e-8,
+        )
+        assert isclose(
+            results["Travel distance (digitized)"],
+            34709.940604208416,
+            rel_tol=1e-8,
+        )
         # Alpha is now interpolated between discrete values for higher precision
         assert isclose(results["alpha"], 0.0043406630797616155, rel_tol=1e-8)
         assert isclose(results["scaling distance to front"], 1.0330323817835148, rel_tol=1e-8)
@@ -840,13 +856,23 @@ def test_analyze(
         assert isclose(results["Steiner_distance"], 39982.57561618427, rel_tol=1e-8)
         assert isclose(results["Satellite_length"], 30645.921081313074, rel_tol=1e-8)
         assert isclose(results["Satellite_distance"], 32555.55782687491, rel_tol=1e-8)
-        assert isclose(results["Actual_ratio"], 0.3801581424325293, rel_tol=1e-8)
-        assert isclose(results["Optimal_ratio"], 0.15754665567785142, rel_tol=1e-8)
+        assert isclose(
+            results["Length_ratio"], 2.4926944316386535, rel_tol=1e-8
+        )
+        assert isclose(
+            results["Distance_ratio"], 1.0330323817835148, rel_tol=1e-8
+        )
         assert isclose(results["PR length"], 3610.664228, rel_tol=1e-8)
         assert isclose(results["PR_minimal_length"], 3459.128503, rel_tol=1e-8)
-        assert isclose(results["Basal Zone length"], 0, rel_tol=1e-8)
-        assert isclose(results["Branched Zone length"], 1869.271258, rel_tol=1e-8)
-        assert isclose(results["Apical Zone length"], 1741.39297, rel_tol=1e-8)
+        assert isclose(
+            results["Basal Zone length"], 15.620499351813308, rel_tol=1e-8
+        )
+        assert isclose(
+            results["Branched Zone length"], 1895.328090356824, rel_tol=1e-8
+        )
+        assert isclose(
+            results["Apical Zone length"], 1699.7156378179268, rel_tol=1e-8
+        )
         assert isclose(results["Mean LR lengths"], 399.4018841, rel_tol=1e-8)
         assert isclose(results["Mean LR minimal lengths"], 384.593032, rel_tol=1e-8)
         assert isclose(results["Median LR lengths"], 219.7926545, rel_tol=1e-8)
@@ -856,7 +882,11 @@ def test_analyze(
         assert isclose(results["Median LR angles"], 59.46912539, rel_tol=1e-8)
         assert results["LR count"] == 24
         assert isclose(results["LR density"], 0.006646976, rel_tol=1e-6)
-        assert isclose(results["Branched Zone density"], 0.012839228, rel_tol=1e-8)
+        assert isclose(
+            results["Branched Zone density"],
+            0.012662715295630763,
+            rel_tol=1e-8,
+        )
         assert isclose(results["Barycenter x displacement"], 95.82352941, rel_tol=1e-8)
         assert isclose(results["Barycenter y displacement"], 1106.823529, rel_tol=1e-8)
         assert isclose(results["Total minimal Distance"], 12689.36127, rel_tol=1e-8)

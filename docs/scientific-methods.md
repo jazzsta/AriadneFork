@@ -1,16 +1,23 @@
 # Scientific Methods
 
-This document describes the scientific calculations implemented in **Ariadne 0.3**. It covers the Pareto framework, the analytical tip-preserving tree generators, the random null models, the 3D path-tortuosity extension, and the region-classification procedure.
+This document describes the scientific calculations implemented in **Ariadne 0.3.1**. It covers the Pareto framework, the analytical tip-preserving tree generators, the random null models, the 3D path-tortuosity extension, and the region-classification procedure.
 
 ## Changes from Ariadne 0.2.0
 
-Ariadne 0.3 changes the **2D Pareto analysis** and adds **region classification**; it does not change the trace GUI or the 3D path-tortuosity analysis.
+Ariadne 0.3.1 changes the **2D Pareto analysis**, adds **region classification**, and splits the output into a digitized-RSA report, a 2D Pareto-analysis report, and a separate optional 3D report. It does not change the trace GUI or the 3D path-tortuosity calculations.
 
 - The 2D front now uses the continuous analytical tip-preserving generator in fully greedy mode. The 0.2.0 fixed-spacing greedy front is replaced.
 - The 2D actual reference is now the straightened RSA, and dominated front points are removed.
-- The 2D CSV random baseline is now the randomized analytical generator, which uses the same biological constraints as the front. The 0.2.0 random-spanning-tree model remains part of the research workflow and is still used for the 3D baseline.
-- Region classification adds an optional sampling procedure and six optional CSV fields.
-- Existing 2D and 3D CSV column names are retained. 2D numerical values, `alpha`, scaling distance, and tradeoff values can differ from 0.2.0 because the underlying 2D algorithms changed.
+- The Pareto CSV random baseline is now the randomized analytical generator, which uses the same biological constraints as the front. The 0.2.0 random-spanning-tree model remains part of the research workflow and is still used for the 3D baseline.
+- Region classification adds an optional sampling procedure and six optional Pareto-CSV fields.
+- 2D numerical values, `alpha`, scaling distance, and tradeoff values can differ from 0.2.0 because the underlying 2D algorithms changed.
+- Scaling is dimension-aware: lengths use the scale factor, areas its square, and inverse-length densities its inverse.
+
+Ariadne 0.3.1 writes two CSV reports, plus an optional third report for 3D analysis:
+
+- `report_rsa_<timestamp>.csv` contains measurements of the original digitized graph: total root length, travel distance, primary/lateral root lengths and angles, zones, `Total minimal Distance`, axis-based `Tortuosity`, barycenter, and convex-hull area. It does not use the straightened RSA, the Pareto front, or random architectures.
+- `report_pareto_<timestamp>.csv` contains the straightened-RSA 2D Pareto analysis: front costs, `alpha`, scaling distance, analytical random baseline, tradeoff fields, and optional region classification.
+- `report_3d_<timestamp>.csv` contains the optional 3D Pareto analysis. The 3D calculation uses the original digitized graph, not the straightened RSA.
 
 ## Table of Contents
 
@@ -43,15 +50,15 @@ The framework follows Chandrasekhar & Navlakha (2019) and Conn et al. (2017, 201
 
 ## Graph Straightening and Tip Preservation
 
-The digitized RSA contains many intermediate points that reflect the tracing resolution rather than biological structure. Ariadne therefore works with a **straightened graph** that keeps:
+The digitized RSA contains many intermediate points that reflect the tracing resolution rather than biological structure. For the 2D Pareto analysis, Ariadne works with a **straightened graph** that keeps:
 
 - the root base (node `0`),
 - all root tips (degree-1 nodes),
 - all branch points (degree ≥ 3).
 
-Intermediate degree-2 points are removed, and retained nodes are connected by straight edges weighted by Euclidean distance.
+Intermediate degree-2 points are removed, and retained nodes are connected by straight edges weighted by Euclidean distance. This straightened graph is the reference for the 2D Pareto CSV; the digitized-RSA report and the 3D analysis use the original digitized graph.
 
-Ariadne 0.3 uses a **tip-preserving analytical generator**. Every original tip remains a terminal node; tips are never consumed as internal branch points. Constructions also enforce:
+Ariadne 0.3.1 uses a **tip-preserving analytical generator**. Every original tip remains a terminal node; tips are never consumed as internal branch points. Constructions also enforce:
 
 - binary branching (each new internal node has two children; the base has at most one),
 - a minimum length / nude-zone constraint,
@@ -116,15 +123,15 @@ Implementation: `quantify.py`, function `distance_from_front()`.
 
 ## Tradeoff Metric
 
-The tradeoff metric compares the actual root’s length-per-distance ratio with the corresponding ratio between the length-optimal and transport-optimal front endpoints:
+The tradeoff metric compares the actual root’s length and travel costs with the corresponding Steiner and Satellite reference costs:
 
 ```text
-Actual_ratio  = actual_length / actual_distance
-Optimal_ratio = steiner_length / satellite_distance
-Tradeoff      = Actual_ratio / Optimal_ratio
+Length_ratio   = actual_length / steiner_length
+Distance_ratio = actual_distance / satellite_distance
+Tradeoff       = Length_ratio / Distance_ratio
 ```
 
-The Steiner point is the front point with minimum total length; the Satellite point is the front point with minimum travel distance.
+The Steiner point is the front point with minimum total length; the Satellite point is the front point with minimum travel distance. A high `Tradeoff` indicates that the root stays closer to the minimum-travel (Satellite) reference than to the minimum-length (Steiner) reference; a low value indicates the opposite.
 
 Implementation: `quantify.py`, function `calculate_tradeoff()`.
 
@@ -134,7 +141,7 @@ Implementation: `quantify.py`, function `calculate_tradeoff()`.
 
 ### Cost Function
 
-The 3D analysis adds path coverage as a third objective:
+The 3D analysis operates on the original digitized graph and its results are written to `report_3d_<timestamp>.csv` when enabled. Its `Total root length` and `Travel distance` are therefore the same digitized quantities as those fields in `report_rsa_<timestamp>.csv`. It adds path coverage as a third objective:
 
 ```text
 Cost(α, β) = α · L + β · D - γ · C
@@ -186,9 +193,9 @@ Implementation: `quantify.py`, function `distance_from_front_3d()`.
 
 Ariadne uses constrained random architectures as null models—networks generated without optimization pressure, against which the actual root and the Pareto front can be compared.
 
-### 2D report baseline
+### 2D Pareto baseline
 
-The baseline used in the CSV report is the **randomized analytical** generator:
+The baseline used in the Pareto CSV report is the **randomized analytical** generator:
 
 - α is drawn uniformly from `[0, 1]`;
 - `optimization_rounds = 0`, so every connection is chosen randomly among valid analytical attachments;

@@ -1,4 +1,4 @@
-"""Ariadne 0.3 research workflow.
+"""Ariadne 0.3.1 research workflow.
 
 This module follows the scientific story in *Road to Ariadne 0.3*:
 straightening, tip preservation, fixed-spacing and continuous fronts,

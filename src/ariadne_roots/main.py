@@ -1105,7 +1105,7 @@ class AnalyzerUI(tk.Frame):
         ).pack(pady=5)
 
         # Region classification controls (2D sampling). Classification is
-        # optional so the report can keep the original Ariadne 0.2.0 columns.
+        # optional so the Pareto report can omit these columns.
         run_classification_var = tk.BooleanVar(
             value=getattr(self, "run_classification", True)
         )
@@ -1424,7 +1424,7 @@ class AnalyzerUI(tk.Frame):
         messagebox.showinfo(
             "Select Output Folder",
             f"Selected {len(self.tree_paths)} file(s) for analysis.\n\n"
-            "Next: Choose where to save the results (CSV report and plots).",
+            "Next: Choose where to save the results (CSV reports and plots).",
         )
 
         # Get output folder
@@ -1444,15 +1444,12 @@ class AnalyzerUI(tk.Frame):
 
         self.output_path = Path(output_folder)
 
-        # create a csv to store analysis results
+        # create the CSV reports
         timestamp = datetime.now()
-        report_dest = (
-            self.output_path / f"report_{str(timestamp.strftime('%Y%m%d_%H%M%S'))}.csv"
-        )
-        report_3d_dest = (
-            self.output_path
-            / f"report_3d_{str(timestamp.strftime('%Y%m%d_%H%M%S'))}.csv"
-        )
+        stamp = timestamp.strftime("%Y%m%d_%H%M%S")
+        report_rsa_dest = self.output_path / f"report_rsa_{stamp}.csv"
+        report_pareto_dest = self.output_path / f"report_pareto_{stamp}.csv"
+        report_3d_dest = self.output_path / f"report_3d_{stamp}.csv"
 
         # Disable buttons during analysis to prevent re-clicks and rendering issues
         self.load_button.config(state="disabled")
@@ -1537,7 +1534,7 @@ class AnalyzerUI(tk.Frame):
 
             # Local region classification (2D only). Reuses the front and the
             # straightened-tree reference already computed by analyze().
-            # It is optional so the report can keep the Ariadne 0.2.0 columns.
+            # It is optional so the Pareto report can omit these six columns.
             if getattr(self, "run_classification", True):
                 try:
                     sampling_results = self._run_in_background(
@@ -1565,23 +1562,58 @@ class AnalyzerUI(tk.Frame):
                     }
                 results.update(sampling_results)
 
-            results["filename"] = graph_name_noext
+            # Split digitized RSA measurements from Pareto/straightened results.
+            rsa_results, pareto_results = quantify.split_analysis_results(results)
+            rsa_results["filename"] = graph_name_noext
+            pareto_results["filename"] = graph_name_noext
             if config.enable_3d_analysis:
                 results_3d["filename"] = graph_name_noext
 
-            # Apply scaling transformation to results
-            scaled_results = scaling.apply_scaling_transformation(
-                results, self.length_scale_factor
+            scaled_rsa_results = scaling.apply_scaling_transformation(
+                rsa_results, self.length_scale_factor
+            )
+            scaled_pareto_results = scaling.apply_scaling_transformation(
+                pareto_results, self.length_scale_factor
             )
 
-            # Write scaled results to CSV
-            with open(report_dest, "a", encoding="utf-8", newline="") as csvfile:
-                w = csv.DictWriter(csvfile, fieldnames=scaled_results.keys())
+            # Write the digitized-RSA report.
+            with open(
+                report_rsa_dest, "a", encoding="utf-8", newline=""
+            ) as csvfile:
+                w = csv.DictWriter(csvfile, fieldnames=scaled_rsa_results.keys())
                 if i == 1:  # Write header only for the first file
                     w.writeheader()
-                w.writerow(scaled_results)
+                w.writerow(scaled_rsa_results)
+
+            # Write the Pareto-analysis report.
+            with open(
+                report_pareto_dest, "a", encoding="utf-8", newline=""
+            ) as csvfile:
+                w = csv.DictWriter(
+                    csvfile, fieldnames=scaled_pareto_results.keys()
+                )
+                if i == 1:
+                    w.writeheader()
+                w.writerow(scaled_pareto_results)
+
+            # Write the optional 3D Pareto report.
+            if config.enable_3d_analysis:
+                scaled_results_3d = scaling.apply_scaling_transformation(
+                    results_3d, self.length_scale_factor
+                )
+                with open(
+                    report_3d_dest, "a", encoding="utf-8", newline=""
+                ) as csvfile:
+                    w = csv.DictWriter(
+                        csvfile, fieldnames=scaled_results_3d.keys()
+                    )
+                    if i == 1:
+                        w.writeheader()
+                    w.writerow(scaled_results_3d)
 
             # debug
+            logging.debug(f"PR length: {results['PR length']}")
+            logging.debug(f"Tortuosity: {results['Tortuosity']}")
             logging.debug(f"Total root length: {results['Total root length']}")
             logging.debug(f"Travel distance: {results['Travel distance']}")
             logging.debug(
@@ -1590,19 +1622,6 @@ class AnalyzerUI(tk.Frame):
             logging.debug(
                 f"Travel distance (random): {results['Travel distance (random)']}"
             )
-
-            # 3D analysis output (only when enabled)
-            if config.enable_3d_analysis:
-                # Apply scaling transformation to 3D results (same as 2D)
-                scaled_results_3d = scaling.apply_scaling_transformation(
-                    results_3d, self.length_scale_factor
-                )
-
-                with open(report_3d_dest, "a", encoding="utf-8", newline="") as csvfile:
-                    w = csv.DictWriter(csvfile, fieldnames=scaled_results_3d.keys())
-                    if i == 1:
-                        w.writeheader()
-                    w.writerow(scaled_results_3d)
 
             self._finish_file_progress()
 
@@ -1645,12 +1664,19 @@ class AnalyzerUI(tk.Frame):
         print("Finished.")
 
         # Show completion dialog with output locations
+        csv_report_lines = (
+            f"  • RSA measurements CSV: {report_rsa_dest.name}\n"
+            f"  • Pareto analysis CSV: {report_pareto_dest.name}\n"
+        )
+        if config.enable_3d_analysis:
+            csv_report_lines += f"  • 3D Pareto CSV: {report_3d_dest.name}\n"
+
         completion_msg = (
             f"Analysis Complete!\n\n"
             f"Processed {len(self.tree_paths)} file(s)\n\n"
             f"Output folder: {self.output_path}\n\n"
             f"Generated files:\n"
-            f"  • CSV report: {report_dest.name}\n"
+            f"{csv_report_lines}"
             f"  • Pareto plots: {len(self.tree_paths)} set(s) of PNG/SVG/HTML\n"
             f"  • Sampling plots: {len(self.tree_paths)} HTML file(s)\n"
             f"  • Interactive plots use the shared plotly.min.js in this folder\n\n"

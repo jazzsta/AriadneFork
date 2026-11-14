@@ -32,6 +32,6 @@ If you're using Ariadne for research and need to cite the underlying methods:
   - `main.py` - Trace and analyze GUI
   - `quantify.py` - Root trait calculations, analysis pipeline, CSV/scaling output, region classification, and report HTML
   - `pareto_functions.py` - Shared graph costs, analytical Pareto algorithms, the analytical 2D null model, and 3D Pareto support
-  - `research.py` - Self-contained Ariadne 0.3 research workflow for IPython/script use
+  - `research.py` - Self-contained Ariadne 0.3.1 research workflow for IPython/script use
 - Tests: `tests/` directory
 - OpenSpec specifications: `openspec/` directory

@@ -6,15 +6,13 @@ from ariadne_roots.scaling import apply_scaling_transformation
 class TestScalingTransformation:
     """Test scaling transformation logic."""
 
-    def test_excluded_fields_not_scaled(self):
-        """Test that excluded fields are NOT scaled."""
+    def test_dimensionless_fields_not_scaled(self):
+        """Test that dimensionless fields are NOT scaled."""
         results = {
-            "LR density": 0.5,
             "alpha": 1.2,
             "Mean LR angles": 45.0,
             "Median LR angles": 42.0,
             "LR count": 10,
-            "Branched Zone density": 0.3,
             "scaling distance to front": 0.8,
             "Tortuosity": 1.1,
             "scaling (random)": 0.9,
@@ -22,16 +20,28 @@ class TestScalingTransformation:
 
         scaled = apply_scaling_transformation(results, 2.0)
 
-        # All excluded fields should remain unchanged
-        assert scaled["LR density"] == 0.5
+        # All dimensionless fields should remain unchanged
         assert scaled["alpha"] == 1.2
         assert scaled["Mean LR angles"] == 45.0
         assert scaled["Median LR angles"] == 42.0
         assert scaled["LR count"] == 10
-        assert scaled["Branched Zone density"] == 0.3
         assert scaled["scaling distance to front"] == 0.8
         assert scaled["Tortuosity"] == 1.1
         assert scaled["scaling (random)"] == 0.9
+
+    def test_area_and_inverse_length_scaling(self):
+        """Areas scale by s^2 and densities by 1/s."""
+        results = {
+            "Convex Hull Area": 30.0,
+            "LR density": 0.5,
+            "Branched Zone density": 0.3,
+        }
+
+        scaled = apply_scaling_transformation(results, 2.0)
+
+        assert scaled["Convex Hull Area"] == 120.0
+        assert scaled["LR density"] == 0.25
+        assert scaled["Branched Zone density"] == 0.15
 
     def test_numeric_fields_scaled_correctly(self):
         """Test that numeric fields are scaled by the factor."""
@@ -102,14 +112,14 @@ class TestScalingTransformation:
         """Test edge case: None values in results."""
         results = {
             "some_field": None,
-            "LR density": 0.5,  # excluded field
+            "alpha": 0.5,  # dimensionless field
         }
 
         scaled = apply_scaling_transformation(results, 2.0)
 
         # None should be preserved
         assert scaled["some_field"] is None
-        assert scaled["LR density"] == 0.5
+        assert scaled["alpha"] == 0.5
 
     def test_empty_arrays(self):
         """Test edge case: empty arrays."""
@@ -129,9 +139,9 @@ class TestScalingTransformation:
         results = {
             "filename": "plant_A.json",
             "Total root length": 150.0,
-            "LR density": 0.45,  # excluded
+            "LR density": 0.45,  # inverse length
             "LR lengths": [10.0, 20.0],
-            "alpha": 1.5,  # excluded
+            "alpha": 1.5,  # dimensionless
             "PR length": 75.0,
         }
 
@@ -139,11 +149,11 @@ class TestScalingTransformation:
 
         # Check each field is handled correctly
         assert scaled["filename"] == "plant_A.json"  # string preserved
-        assert scaled["Total root length"] == 300.0  # numeric scaled
-        assert scaled["LR density"] == 0.45  # excluded not scaled
+        assert scaled["Total root length"] == 300.0  # length scaled
+        assert scaled["LR density"] == 0.225  # inverse length divided by s
         assert scaled["LR lengths"] == [20.0, 40.0]  # array scaled
-        assert scaled["alpha"] == 1.5  # excluded not scaled
-        assert scaled["PR length"] == 150.0  # numeric scaled
+        assert scaled["alpha"] == 1.5  # dimensionless
+        assert scaled["PR length"] == 150.0  # length scaled
 
     def test_custom_excluded_fields(self):
         """Test using custom excluded fields set."""
@@ -192,27 +202,6 @@ class TestScalingTransformation:
         # Should preserve invalid array unchanged
         assert scaled["LR lengths"] == ["invalid", "data", None]
 
-    def test_substring_matching_excludes_related_fields(self):
-        """Verify substring matching excludes fields containing patterns."""
-        results = {
-            "LR density": 0.5,
-            "Branched Zone density": 0.3,
-            "alpha": 1.2,
-            "Mean LR angles": 45.0,
-            "Total root length": 100.0,
-        }
-
-        scaled = apply_scaling_transformation(results, 2.0)
-
-        # Fields containing excluded patterns should NOT be scaled
-        assert scaled["LR density"] == 0.5
-        assert scaled["Branched Zone density"] == 0.3
-        assert scaled["alpha"] == 1.2
-        assert scaled["Mean LR angles"] == 45.0
-
-        # Other fields should be scaled
-        assert scaled["Total root length"] == 200.0
-
     def test_lr_angles_field_not_scaled(self):
         """Verify LR angles field is excluded (angles are dimensionless).
 
@@ -234,17 +223,12 @@ class TestScalingTransformation:
         assert scaled["Total root length"] == 200.0
 
     def test_tradeoff_fields_scaling(self):
-        """Test that tradeoff fields are handled correctly during scaling.
-
-        Tradeoff, Actual_ratio, and Optimal_ratio are dimensionless ratios
-        and should NOT be scaled. Steiner/Satellite lengths and distances
-        should be scaled.
-        """
+        """Tradeoff ratios are dimensionless; Steiner/Satellite costs scale."""
         results = {
             # Dimensionless ratios - should NOT be scaled
             "Tradeoff": 2.5,
-            "Actual_ratio": 0.38,
-            "Optimal_ratio": 0.15,
+            "Length_ratio": 2.49,
+            "Distance_ratio": 1.03,
             # Length/distance metrics - SHOULD be scaled
             "Steiner_length": 4920.75,
             "Steiner_distance": 39266.99,
@@ -258,8 +242,8 @@ class TestScalingTransformation:
 
         # Dimensionless ratios should NOT be scaled
         assert scaled["Tradeoff"] == 2.5
-        assert scaled["Actual_ratio"] == 0.38
-        assert scaled["Optimal_ratio"] == 0.15
+        assert scaled["Length_ratio"] == 2.49
+        assert scaled["Distance_ratio"] == 1.03
 
         # Length/distance metrics should be scaled
         assert scaled["Steiner_length"] == 4920.75 * 2.0
@@ -385,11 +369,16 @@ class TestScalingTransformation:
             "epsilon_3d_coverage (random)": 2.1,
             "Path tortuosity": 15.5,
             "Path tortuosity (random)": 12.3,
+            "Steiner_tortuosity_3d": 14.8,
+            "Satellite_tortuosity_3d": 15.1,
+            "Coverage_tortuosity_3d": 12.7,
             # Length fields - SHOULD be scaled
             "Total root length": 5000.0,
             "Travel distance": 8000.0,
             "Total root length (random)": 6500.0,
             "Travel distance (random)": 9200.0,
+            "Steiner_length_3d": 4800.0,
+            "Steiner_distance_3d": 8500.0,
         }
 
         scale_factor = 0.0254  # Example: pixels to mm
@@ -414,6 +403,9 @@ class TestScalingTransformation:
             "epsilon_3d_coverage (random)",
             "Path tortuosity",
             "Path tortuosity (random)",
+            "Steiner_tortuosity_3d",
+            "Satellite_tortuosity_3d",
+            "Coverage_tortuosity_3d",
         ]
 
         for field in dimensionless_fields:
@@ -428,3 +420,9 @@ class TestScalingTransformation:
             == results_3d["Total root length"] * scale_factor
         )
         assert scaled["Travel distance"] == results_3d["Travel distance"] * scale_factor
+        assert scaled["Steiner_length_3d"] == (
+            results_3d["Steiner_length_3d"] * scale_factor
+        )
+        assert scaled["Steiner_distance_3d"] == (
+            results_3d["Steiner_distance_3d"] * scale_factor
+        )

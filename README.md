@@ -1,19 +1,19 @@
-# Ariadne 0.3
+# Ariadne 0.3.1
 
 [![Stable version](https://img.shields.io/pypi/v/ariadne-roots?label=stable "Stable version")](https://pypi.org/project/ariadne-roots/)
 [![Latest pre-release](https://img.shields.io/github/v/release/jazzsta/AriadneFork?include_prereleases&label=pre-release)](https://github.com/jazzsta/AriadneFork/releases)
 
-**Current development version:** `0.3`
+**Current development version:** `0.3.1`
 
 🌱 is a small software package for analyzing images of _Arabidopsis thaliana_ roots.
 
 📷 It features a GUI for semi-automated image segmentation
 
-<img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3/assets/color-final.gif" width="250" height="250">
+<img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3.1/assets/color-final.gif" width="250" height="250">
 
 ⏰ with support for time-series GIFs
 
-<img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3/assets/early-final.gif" width="250" height="250">
+<img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3.1/assets/early-final.gif" width="250" height="250">
 
 ☠️ that creates dynamic 2D skeleton graphs of the root system architecture (RSA).
 
@@ -31,18 +31,18 @@
 
 | Document | Description                                                                     |
 |----------|---------------------------------------------------------------------------------|
-| [Scientific Methods](https://github.com/jazzsta/AriadneFork/blob/v0.3/docs/scientific-methods.md) | Pareto optimality calculations, mathematical formulas, and academic references  |
-| [Output Fields Reference](https://github.com/jazzsta/AriadneFork/blob/v0.3/docs/output-fields.md) | Complete reference for all CSV output fields with units and interpretation      |
-| [Ariadne 0.3 Research Notebook](https://github.com/jazzsta/AriadneFork/blob/v0.3/Ariadne0.3_Exploration.ipynb) | Reproducible pareto fronts, random null models and sampling figures |
+| [Scientific Methods](https://github.com/jazzsta/AriadneFork/blob/v0.3.1/docs/scientific-methods.md) | Pareto optimality calculations, mathematical formulas, and academic references  |
+| [Output Fields Reference](https://github.com/jazzsta/AriadneFork/blob/v0.3.1/docs/output-fields.md) | Complete reference for all CSV output fields with units and interpretation      |
+| [Ariadne 0.3 Research Notebook](https://github.com/jazzsta/AriadneFork/blob/v0.3.1/Ariadne0.3_Exploration.ipynb) | Reproducible pareto fronts, random null models and sampling figures |
 
-For citing the underlying methods, see the [References](#references) section or the [Scientific Methods](https://github.com/jazzsta/AriadneFork/blob/v0.3/docs/scientific-methods.md) documentation.
+For citing the underlying methods, see the [References](#references) section or the [Scientific Methods](https://github.com/jazzsta/AriadneFork/blob/v0.3.1/docs/scientific-methods.md) documentation.
 
 ## Installation
 
 Ariadne is installed as a Python package called `ariadne-roots`. We recommend using a package manager and creating an isolated environment for `ariadne-roots` and its dependencies.
 You can find the latest version of `ariadne-roots` on the [Releases](https://github.com/jazzsta/AriadneFork/releases) page.
 
-> **Version note — Ariadne 0.3 is not on PyPI yet.** The `pip`, `uv add`, and `uvx` commands below install the older PyPI release (0.2.x), not Ariadne 0.3. To install 0.3, clone the repository and run it from source:
+> **Version note — Ariadne 0.3.1 is not on PyPI yet.** The `pip`, `uv add`, and `uvx` commands below install the older PyPI release (0.2.x), not Ariadne 0.3.1. To install 0.3.1, clone the repository and run it from source:
 >
 > ```sh
 > git clone https://github.com/jazzsta/AriadneFork.git
@@ -182,7 +182,7 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
     pip install --pre ariadne-roots  # Use --pre to include pre-release versions
     ```
     - Omit the `--pre` flag if you only want to install stable releases.
-    - **This installs the PyPI release (0.2.x), not Ariadne 0.3.** To use 0.3, clone the repository and run `uv sync` as described in the version note at the top of the installation section.
+    - **This installs the PyPI release (0.2.x), not Ariadne 0.3.1.** To use 0.3.1, clone the repository and run `uv sync` as described in the version note at the top of the installation section.
 
 
 ## Usage
@@ -203,7 +203,7 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
 1. **Click on “Trace”** to trace roots.
 2. The following window should open:
 
-    <img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3/assets/Trace_Menu.png" width="450" height="450">
+    <img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3.1/assets/Trace_Menu.png" width="450" height="450">
 
 3. **Click on “Import image file”** and select the image to trace the roots.
 4. **Select the zoom factor for your image** 
@@ -238,7 +238,7 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
 3. **Run the analysis:**
     - Click on "Analyze" in Ariadne.
 
-    <img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3/assets/Welcome.png" width="400" height="250">
+    <img src="https://raw.githubusercontent.com/jazzsta/AriadneFork/v0.3.1/assets/Welcome.png" width="400" height="250">
 
     - **Set analysis settings** (optional):
         - **Scale:** enter the pixel distance and corresponding real distance, then choose a unit (e.g. `mm`, `cm`, `µm`).
@@ -254,7 +254,7 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
         - Choose "location_2" for the output
         - The software will analyze all selected files and save results
     - **Completion**:
-        - A dialog will show where the results were saved (CSV report, Pareto plots, and HTML reports)
+        - A dialog will show where the results were saved (CSV reports, Pareto plots, and HTML reports)
 
 ### Results
 
@@ -262,66 +262,72 @@ Follow the instructions to install [Miniforge3](https://github.com/conda-forge/m
     - A Pareto optimality plot for each root in **PNG**, **SVG**, and interactive **HTML** format.
     - A 3D Pareto plot in **PNG** and **SVG** format when 3D analysis is enabled.
     - An interactive region-sampling **HTML** report when region classification is enabled.
-    - A timestamped CSV file (e.g., `report_20241110_153045.csv`) storing all RSA traits for each root.
-    - A separate `report_3d_*.csv` when 3D analysis is enabled.
+    - Up to three timestamped CSV reports:
+        - `report_rsa_<timestamp>.csv`: digitized RSA measurements, without straightening, Pareto analysis, or random architectures.
+        - `report_pareto_<timestamp>.csv`: Pareto analysis based on the straightened RSA, including the random baseline, tradeoff, and optional region classification.
+        - `report_3d_<timestamp>.csv`: optional 3D Pareto analysis, written when 3D analysis is enabled.
     - A shared `plotly.min.js` used by the interactive HTML reports.
 
-**Note on classification:** If *"-> Run region classification (adds report columns)"* is unchecked, the six classification columns are omitted from the CSV and no sampling HTML is generated. The report then keeps the Ariadne 0.2.0 2D column set.
+**Note on classification:** If *"-> Run region classification (adds report columns)"* is unchecked, the six classification columns are omitted from `report_pareto_*.csv` and no sampling HTML is generated.
 
-**Note on Units:** If you configured scaling during analysis, all length measurements in the CSV and plots will be in your specified units (e.g., mm, cm). Otherwise, measurements are in pixels.
+**Note on Units:** If you configured scaling during analysis, lengths in the CSV reports and plots are converted to your chosen units (e.g., mm, cm). Areas are converted with the squared scale factor, and inverse-length densities with its inverse.
 
-The RSA traits included in the CSV are
+All CSV reports include a `filename` column.
 
-- **Total root length:** Total root length
-- **Travel distance:** Sum of the length from the hypocotyl to each root tip (Pareto related trait)
-- **Alpha:** Trade-off value between growth and transport efficiency (Pareto related trait)
-- **Scaling distance to front:** Pareto optimality value (Pareto related trait)
+#### RSA Measurements (`report_rsa_*.csv`)
+
+These fields come directly from the digitized graph:
+
+- **Total root length:** Sum of all edge lengths in the digitized root network
+- **Travel distance:** Sum of path lengths from the base to every root tip along the digitized network
+- **PR length:** Length of the primary root along its digitized axis
+- **PR minimal length:** Euclidean distance from the hypocotyl to the primary-root tip (the unique tip with `LR_index is None`)
+- **Basal zone length:** Length from the hypocotyl to the insertion of the first lateral root along the primary root
+- **Branched zone length:** Length from the insertion of the first lateral root to the insertion of the last lateral root along the primary root
+- **Apical zone length:** Length from the last lateral-root insertion to the primary-root tip
+- **Mean LR lengths:** Average length of all lateral roots
+- **Mean LR minimal distances:** Average Euclidean distance between each lateral-root tip and its insertion on its parent root
+- **Median LR lengths:** Median length of all lateral roots
+- **Median LR minimal distances:** Median Euclidean distance between each lateral-root tip and its insertion on its parent root
+- **Sum LR minimal distances:** Sum of the Euclidean distances between each lateral-root tip and its insertion on its parent root
+- **Mean LR angles:** Average lateral-root set-point angles relative to gravity
+- **Median LR angles:** Median lateral-root set-point angles relative to gravity
+- **LR count:** Number of lateral roots
+- **LR density:** Number of lateral roots divided by primary-root length
+- **Branched zone density:** Number of lateral roots divided by branched-zone length
+- **LR lengths:** Length of each individual lateral root
+- **LR angles:** Set-point angle of each individual lateral root relative to gravity
+- **LR minimal distance:** Euclidean distance between each lateral-root tip and its insertion on its parent root
+- **Barycenter x displacement:** Horizontal distance between the uppermost node and the barycenter of the convex hull
+- **Barycenter y displacement:** Vertical distance between the uppermost node and the barycenter of the convex hull
+- **Total minimal distance:** Sum of the primary-root base-to-tip straight-line distance and the straight-line distance from each lateral-root insertion to its tip
+- **Tortuosity (Material/Straight-Axis Ratio):** Summed digitized root-axis lengths (`PR length + Σ LR lengths`) divided by total minimal distance; this measures axis straightness, not the straightened `Total root length` divided by `Total minimal Distance`
+- **Convex Hull Area:** Area of the convex hull enclosing all root nodes
+
+`LR count` and the lateral-root arrays include all root axes with an `LR_index`, including first-order and higher-order laterals.
+
+`Total root length` and `Travel distance` in this report are digitized values; the Pareto report uses `Total root length (straightened)` and `Travel distance (straightened)`.
+
+#### Pareto Analysis Fields (`report_pareto_*.csv`)
+
+These fields use the straightened RSA and the generated Pareto/random architectures:
+
+- **Total root length (straightened):** Sum of all edge lengths in the straightened root network
+- **Travel distance (straightened):** Sum of path lengths from the base to every root tip in the straightened network
+- **Alpha:** Trade-off value between growth and transport efficiency
+- **Scaling distance to front:** Pareto optimality value
 - **Total root length (random):** Mean total root length of the randomized analytical baseline
-- **Travel distance (random):** Mean travel distance of the randomized analytical baseline (Pareto related trait)
-- **Alpha (random):** Trade-off value for the mean randomized analytical baseline (Pareto related trait)
-- **Scaling distance to front (random):** Pareto optimality value for the mean randomized analytical baseline (Pareto related trait)
-- **Tradeoff:** Ratio-based comparison of the actual root to the Steiner (length-optimal) and Satellite (transport-optimal) reference architectures
+- **Travel distance (random):** Mean travel distance of the randomized analytical baseline
+- **Alpha (random):** Trade-off value for the mean randomized analytical baseline
+- **Scaling distance to front (random):** Pareto optimality value for the mean randomized analytical baseline
+- **Tradeoff:** `Length_ratio / Distance_ratio`, comparing the actual straightened root's relative length and travel costs to the Steiner (length-optimal) and Satellite (transport-optimal) references
 - **Steiner_length / Steiner_distance:** Cost of the length-optimal architecture on the front
 - **Satellite_length / Satellite_distance:** Cost of the transport-optimal architecture on the front
-- **Actual_ratio / Optimal_ratio:** Ratios used to compute the Tradeoff metric
-- **PR length:** Length of the primary root
-- **PR minimal length:** Euclidean distance from the hypocotyl to the primary root tip
-- **Basal zone length:** length from the hypocotyl to the insertion of the first lateral root along the primary root 
-- **Branched zone length:** length from the insertion of the first lateral root to the insertion of the last lateral root along the primary root 
-- **Apical zone length:** length from the last lateral root to the root tip along the primary root 
-- **Mean LR lengths:** Average length of all lateral roots
-- **Mean LR minimal distances:** Average Euclidean distance between each lateral root tip and its insertion on the primary root for all lateral roots
-- **Median LR lengths:** Median length of all lateral roots
-- **Median LR minimal distances:** Median Euclidean distance between each lateral root tip and its insertion on the primary root for all lateral roots
-- **Sum LR minimal distances:** Sum of the Euclidean distances between each lateral root tip and its insertion on the primary root for all lateral roots
-- **Mean LR angles:** Average lateral root set point angles
-- **Median LR angles:** Median lateral root set point angles
-- **LR count:** Number of lateral roots
-- **LR density:** Number of lateral roots divided by primary root length
-- **Branched zone density:** Number of lateral roots divided by Branched zone length
-- **LR lengths:** Length of each individual lateral root
-- **LR angles:** Lateral root set point angle of each individual lateral root
-- **LR minimal distance:** Euclidean distance between each lateral root tip and its insertion on the primary root for each lateral root
-- **Barycentre x displacement:** Vertical distance between the hypocotyl base to the barycenter of the convex hull
-- **Barycentre y displacement:** Horizontal distance between the hypocotyl base to the barycenter of the convex hull
-- **Total minimal distance:** Sum of LR minimal distances plus PR minimal length
-- **Tortuosity (Material/Total Distance Ratio):** Total root length divided by total minimal distance
+- **Length_ratio / Distance_ratio:** `actual_length / steiner_length` and `actual_distance / satellite_distance`
 
-#### 3D Pareto Analysis Fields (Optional)
+##### Region Classification Fields (Optional)
 
-When **"-> Add path tortuosity to Pareto (3D, slower)"** is enabled during analysis, additional fields are computed that include path coverage as a third objective:
-
-- **Path tortuosity:** Sum of tortuosity values for all root paths
-- **alpha_3d, beta_3d, gamma_3d:** Interpolated Pareto weights (α + β + γ = 1)
-- **epsilon_3d:** Multiplicative ε-indicator measuring distance from the 3D Pareto front
-- **epsilon_3d_material/transport/coverage:** Individual ratio components showing which objective constrains optimality
-- **Corner costs (Steiner/Satellite/Coverage):** Reference values for optimal architectures at each corner of the Pareto surface
-
-For complete field descriptions, see the [Output Fields Reference](https://github.com/jazzsta/AriadneFork/blob/v0.3/docs/output-fields.md).
-
-#### Region Classification Fields (Optional)
-
-When **“-> Run region classification (adds report columns)”** is enabled, six dimensionless fields are added to the 2D report:
+When **“-> Run region classification (adds report columns)”** is enabled, six dimensionless fields are added to `report_pareto_*.csv`:
 
 - **mean_rounds_normalized:** Weighted mean optimization level of the sampled architectures inside the target region, normalized to `[0, 1]`.
 - **ci_low_normalized / ci_high_normalized:** Confidence interval for the normalized mean optimization level.
@@ -329,6 +335,20 @@ When **“-> Run region classification (adds report columns)”** is enabled, si
 - **local_alpha_ci_low / local_alpha_ci_high:** Confidence interval for the local α.
 
 These fields are computed from semi-random architectures sampled around the actual straightened RSA. They answer “how much greedy optimization would be needed to reach this root’s Pareto costs?” and “which α best describes its local position?”.
+
+#### 3D Pareto Analysis (`report_3d_*.csv`, Optional)
+
+When **"-> Add path tortuosity to Pareto (3D, slower)"** is enabled during analysis, a separate `report_3d_<timestamp>.csv` is written. These 3D fields use the original digitized graph, not the straightened RSA. `Total root length` and `Travel distance` here are the same digitized quantities as the fields with those names in `report_rsa_*.csv`:
+
+- **Total root length / Travel distance:** Material and transport costs of the original graph
+- **Path tortuosity:** Sum of tortuosity values for all root paths
+- **alpha_3d, beta_3d, gamma_3d:** Interpolated Pareto weights (α + β + γ = 1)
+- **epsilon_3d:** Multiplicative ε-indicator measuring distance from the 3D Pareto front
+- **epsilon_3d_material/transport/coverage:** Individual ratio components showing which objective constrains optimality
+- **Total root length (random) / Travel distance (random) / Path tortuosity (random):** Random-baseline costs
+- **Corner costs (Steiner/Satellite/Coverage):** Reference values for optimal architectures at each corner of the Pareto surface
+
+For complete field descriptions, see the [Output Fields Reference](https://github.com/jazzsta/AriadneFork/blob/v0.3.1/docs/output-fields.md).
 
 ##### Keybinds
 * `Left-click`: place/select node. 

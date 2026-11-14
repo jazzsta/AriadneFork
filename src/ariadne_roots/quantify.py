@@ -718,18 +718,12 @@ def calculate_tradeoff(front, actual_tree):
         prioritizes minimizing travel distance; a low trade-off value indicates
         the plant prioritizes minimizing total length."
 
-    That description corresponds to an excess-based metric roughly of the form:
-        (actual_length - steiner_length) / (actual_distance - satellite_distance)
+    That description corresponds to the ratio-based metric used here:
+        (actual_length / steiner_length) / (actual_distance / satellite_distance)
 
-    In this implementation we use a related, ratio-based metric inspired by the
-    same intuition, defined as a ratio of length-per-distance values:
-
-        Tradeoff = Actual_ratio / Optimal_ratio
-                 = (actual_length / actual_distance) / (steiner_length / satellite_distance)
-
-    This represents an alternative way to quantify the prioritization between
-    minimizing total root length (material cost) and minimizing travel distance
-    (transport efficiency), complementary to the alpha value on the Pareto front.
+    This quantifies the prioritization between minimizing total root length
+    (material cost) and minimizing travel distance (transport efficiency),
+    complementary to the alpha value on the Pareto front.
 
     - Steiner architecture: Minimizes total root length (material cost)
     - Satellite architecture: Minimizes travel distance (transport efficiency)
@@ -740,13 +734,13 @@ def calculate_tradeoff(front, actual_tree):
 
     Returns:
         Dict with Tradeoff metric and component values:
-        - Tradeoff: Ratio of actual to optimal efficiency
+        - Tradeoff: Length_ratio / Distance_ratio
         - Steiner_length: Min total root length on Pareto front
         - Steiner_distance: Travel distance of the Steiner architecture
         - Satellite_length: Total root length of the Satellite architecture
         - Satellite_distance: Travel distance of the Satellite architecture
-        - Actual_ratio: actual_length / actual_distance
-        - Optimal_ratio: steiner_length / satellite_distance
+        - Length_ratio: actual_length / steiner_length
+        - Distance_ratio: actual_distance / satellite_distance
     """
     # Extract Pareto front values
     front_points = list(front.values())  # List of [total_length, travel_distance] pairs
@@ -759,8 +753,8 @@ def calculate_tradeoff(front, actual_tree):
             "Steiner_distance": None,
             "Satellite_length": None,
             "Satellite_distance": None,
-            "Actual_ratio": None,
-            "Optimal_ratio": None,
+            "Length_ratio": None,
+            "Distance_ratio": None,
         }
 
     # Find Steiner architecture (minimizes total root length)
@@ -775,24 +769,29 @@ def calculate_tradeoff(front, actual_tree):
     actual_length, actual_distance = actual_tree
 
     # Calculate ratios - handle division by zero
-    if actual_distance == 0:
-        actual_ratio = None
-        print("Warning: Actual travel distance is 0, actual_ratio set to None")
+    if steiner_length == 0:
+        length_ratio = None
+        print("Warning: Steiner length is 0, length_ratio set to None")
     else:
-        actual_ratio = float(actual_length / actual_distance)
+        length_ratio = float(actual_length / steiner_length)
 
     if satellite_distance == 0:
-        optimal_ratio = None
-        print("Warning: Satellite travel distance is 0, optimal_ratio set to None")
+        distance_ratio = None
+        print("Warning: Satellite travel distance is 0, distance_ratio set to None")
     else:
-        optimal_ratio = float(steiner_length / satellite_distance)
+        distance_ratio = float(actual_distance / satellite_distance)
 
     # Calculate tradeoff
-    if optimal_ratio is None or optimal_ratio == 0 or actual_ratio is None:
+    if (
+        length_ratio is None
+        or length_ratio == 0
+        or distance_ratio is None
+        or distance_ratio == 0
+    ):
         tradeoff = None
         print("Warning: Could not calculate tradeoff due to invalid ratios")
     else:
-        tradeoff = float(actual_ratio / optimal_ratio)
+        tradeoff = float(length_ratio / distance_ratio)
 
     return {
         "Tradeoff": tradeoff,
@@ -800,8 +799,8 @@ def calculate_tradeoff(front, actual_tree):
         "Steiner_distance": float(steiner_distance),
         "Satellite_length": float(satellite_length),
         "Satellite_distance": float(satellite_distance),
-        "Actual_ratio": actual_ratio,
-        "Optimal_ratio": optimal_ratio,
+        "Length_ratio": length_ratio,
+        "Distance_ratio": distance_ratio,
     }
 
 
@@ -961,6 +960,86 @@ REGION_CLASSIFICATION_FIELDS = (
     "local_alpha_ci_high",
 )
 
+# Measurements derived directly from the digitized graph. These are written to
+# report_rsa_*.csv and do not use the straightened RSA or the Pareto front.
+RSA_MEASUREMENT_FIELDS = (
+    "Total root length (digitized)",
+    "Travel distance (digitized)",
+    "PR length",
+    "PR_minimal_length",
+    "Basal Zone length",
+    "Branched Zone length",
+    "Apical Zone length",
+    "Mean LR lengths",
+    "Mean LR minimal lengths",
+    "Median LR lengths",
+    "Median LR minimal lengths",
+    "sum LR minimal lengths",
+    "Mean LR angles",
+    "Median LR angles",
+    "LR count",
+    "LR density",
+    "Branched Zone density",
+    "LR lengths",
+    "LR angles",
+    "LR minimal lengths",
+    "Barycenter x displacement",
+    "Barycenter y displacement",
+    "Total minimal Distance",
+    "Tortuosity",
+    "Convex Hull Area",
+)
+
+# Measurements derived from the straightened RSA, the Pareto front, and the
+# random baselines. These are written to report_pareto_*.csv.
+PARETO_ANALYSIS_FIELDS = (
+    "Total root length",
+    "Travel distance",
+    "alpha",
+    "scaling distance to front",
+    "Total root length (random)",
+    "Travel distance (random)",
+    "alpha (random)",
+    "scaling (random)",
+    "Tradeoff",
+    "Steiner_length",
+    "Steiner_distance",
+    "Satellite_length",
+    "Satellite_distance",
+    "Length_ratio",
+    "Distance_ratio",
+) + REGION_CLASSIFICATION_FIELDS
+
+# Internal result keys use the unambiguous "(digitized)" / straightened names.
+# The CSV reports use the shorter public names shown here.
+_RSA_OUTPUT_NAMES = {
+    "Total root length (digitized)": "Total root length",
+    "Travel distance (digitized)": "Travel distance",
+}
+_PARETO_OUTPUT_NAMES = {
+    "Total root length": "Total root length (straightened)",
+    "Travel distance": "Travel distance (straightened)",
+}
+
+
+def split_analysis_results(results):
+    """Split analyze() output into digitized-RSA and Pareto result dictionaries.
+
+    ``filename`` is not included; the caller should add it to both returned
+    dictionaries. 3D results are handled as a separate report by the caller.
+    """
+    rsa_results = {}
+    for field in RSA_MEASUREMENT_FIELDS:
+        if field in results:
+            rsa_results[_RSA_OUTPUT_NAMES.get(field, field)] = results[field]
+
+    pareto_results = {}
+    for field in PARETO_ANALYSIS_FIELDS:
+        if field in results:
+            pareto_results[_PARETO_OUTPUT_NAMES.get(field, field)] = results[field]
+
+    return rsa_results, pareto_results
+
 
 def pareto_calcs(H, n_random=DEFAULT_N_RANDOM, tree_payloads=None):
     """Perform Pareto-related calculations.
@@ -1064,7 +1143,7 @@ def classify_region(
     ``exploration.estimate_rounds_for_region``. It reuses the Pareto front and
     straightened-tree reference already computed by :func:`pareto_calcs`,
     optionally saves the sampling plot, and returns only the dimensionless
-    fields that belong in the CSV report.
+    fields that belong in the Pareto CSV report.
 
     Args:
         H: NetworkX graph representing the root system.
@@ -1247,27 +1326,35 @@ def calc_zones(G, root_node):
                 first_lr_insertion_point = node
             last_lr_insertion_point = node
 
-    # Calculate zone lengths
+    # Calculate zone lengths. A segment belongs to the zone it ends in:
+    # segments up to the first insertion are basal, segments up to the last
+    # insertion are branched, and the remaining segments are apical.
     branched_zone_length = 0
     basal_zone_length = 0
     apical_zone_length = 0
 
-    found_first = False
-    found_last = False
+    pr_index = {node: index for index, node in enumerate(PR_nodes)}
+    first_index = (
+        pr_index[first_lr_insertion_point]
+        if first_lr_insertion_point is not None
+        else None
+    )
+    last_index = (
+        pr_index[last_lr_insertion_point]
+        if last_lr_insertion_point is not None
+        else None
+    )
 
-    for prev, current in zip(PR_nodes, PR_nodes[1:]):
+    for index, (prev, current) in enumerate(
+        zip(PR_nodes, PR_nodes[1:]), start=1
+    ):
         segment_length = distance(G.nodes[prev]["pos"], G.nodes[current]["pos"])
 
-        if current == first_lr_insertion_point:
-            found_first = True
-        if current == last_lr_insertion_point:
-            found_last = True
-
-        if found_first and not found_last:
-            branched_zone_length += segment_length
-        elif not found_first:
+        if first_index is None or index <= first_index:
             basal_zone_length += segment_length
-        elif found_last:
+        elif index <= last_index:
+            branched_zone_length += segment_length
+        else:
             apical_zone_length += segment_length
 
     return {
@@ -1341,11 +1428,42 @@ def calc_len_LRs_with_distances(H):
 
 
 def find_lowermost_node_of_primary_root(G, root_node):
-    """Find the lowermost node of the primary root."""
-    descendants = nx.descendants(G, root_node)
+    """Find the lowermost node of the primary root.
+
+    Primary-root nodes are identified by ``LR_index is None``. The function
+    works for both directed and undirected graphs. If the graph has no
+    ``LR_index`` annotations at all, it falls back to the deepest node in the
+    graph (the legacy behaviour, useful for synthetic test graphs).
+    """
+    has_lr_index = any(
+        "LR_index" in data for _, data in G.nodes(data=True)
+    )
+
+    if has_lr_index:
+        primary_nodes = [
+            node
+            for node, data in G.nodes(data=True)
+            if data.get("LR_index") is None
+        ]
+        if not primary_nodes:
+            raise ValueError(
+                "Graph has LR_index annotations but no primary-root nodes "
+                "(LR_index is None)."
+            )
+    else:
+        primary_nodes = list(G.nodes())
+
+    # The primary-root tip is the terminal primary node, not the base.
+    tips = [
+        node
+        for node in primary_nodes
+        if node != root_node and G.degree(node) == 1
+    ]
+    candidates = tips if tips else primary_nodes
+
     lowermost_node = max(
-        descendants, key=lambda node: G.nodes[node]["pos"][1]
-    )  # Find the node with the maximum y-coordinate
+        candidates, key=lambda node: G.nodes[node]["pos"][1]
+    )  # Find the primary-root node with the maximum y-coordinate
     return G.nodes[lowermost_node]["pos"]
 
 
@@ -1384,6 +1502,17 @@ def analyze(G, enable_3d=True, n_random=DEFAULT_N_RANDOM, tree_payloads=None):
 
     assert root_node == 0
 
+    # Digitized costs for report_rsa_*.csv. These use every traced segment and
+    # are not based on the straightened network. Set the weights explicitly so
+    # these values match the 3D actual-tree costs, which use the same graph.
+    for u, v in H.edges():
+        H[u][v]["weight"] = point_dist(
+            H.nodes[u]["pos"], H.nodes[v]["pos"]
+        )
+    digitized_root_length, digitized_travel_distance = graph_costs(
+        H, critical_nodes=get_critical_nodes(H)
+    )
+
     # PR len
     len_PR = calc_len_PR(H, root_node)
     # print('PR length is:', len_PR)
@@ -1408,6 +1537,8 @@ def analyze(G, enable_3d=True, n_random=DEFAULT_N_RANDOM, tree_payloads=None):
     results, front, randoms = pareto_calcs(
         H, n_random=n_random, tree_payloads=tree_payloads
     )
+    results["Total root length (digitized)"] = float(digitized_root_length)
+    results["Travel distance (digitized)"] = float(digitized_travel_distance)
 
     # 3D Pareto analysis is optional (slower: 10,201 iterations vs 101 for 2D)
     if enable_3d:

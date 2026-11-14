@@ -1,32 +1,36 @@
 """Scaling utilities for converting pixel measurements to real-world units."""
 
+AREA_FIELDS = {"Convex Hull Area"}
+INVERSE_LENGTH_FIELDS = {"LR density", "Branched Zone density"}
+
 
 def apply_scaling_transformation(results, scale_factor, excluded_fields=None):
-    """Apply scaling transformation to results dictionary.
+    """Apply dimension-aware scaling to a results dictionary.
 
-    Scales numeric fields by scale_factor while preserving dimensionless metrics,
-    non-numeric values, and array structures.
+    Lengths are multiplied by ``scale_factor``, areas by its square, and
+    inverse-length measures (densities) are divided by it. Dimensionless
+    metrics and non-numeric values are preserved.
 
     Uses substring matching for excluded_fields to catch related metrics:
-    - "LR density" excludes any field containing "LR density"
     - "angles" excludes "Mean LR angles", "Median LR angles", "LR angles"
-
-    This approach reduces maintenance burden when adding new dimensionless
-    metrics while maintaining scientific correctness.
 
     Args:
         results: Dictionary of analysis results
-        scale_factor: Multiplicative scaling factor (e.g., 2.5 for 1 px = 2.5 mm)
+        scale_factor: Length scale factor (e.g., 2.5 for 1 px = 2.5 mm)
         excluded_fields: Set of substring patterns to exclude from scaling.
                         Uses substring matching (not exact matching).
-                        Defaults to 13 dimensionless patterns:
-                        - "LR density", "Branched Zone density" (densities)
+                        Defaults to the following dimensionless patterns:
                         - "alpha" (shape parameter)
                         - "Mean LR angles", "Median LR angles", "LR angles" (angles)
                         - "LR count" (count)
                         - "scaling distance to front", "scaling (random)" (normalized)
                         - "Tortuosity" (ratio)
-                        - "Tradeoff", "Actual_ratio", "Optimal_ratio" (dimensionless ratios)
+                        - "Tradeoff", "Length_ratio", "Distance_ratio"
+                          (dimensionless ratios; legacy "Actual_ratio" and
+                          "Optimal_ratio" are also excluded)
+                        - "tortuosity_3d" (3D corner coverage ratios)
+                        - "Path tortuosity", "alpha_beta", "beta", "gamma",
+                          "epsilon" (3D Pareto ratios and parameters)
 
     Returns:
         Dictionary with scaled numeric values, unchanged excluded/non-numeric values
@@ -35,14 +39,17 @@ def apply_scaling_transformation(results, scale_factor, excluded_fields=None):
         >>> results = {
         ...     "Total root length": 100,
         ...     "LR density": 0.5,
+        ...     "Convex Hull Area": 30,
         ...     "Mean LR angles": 45.0,
         ...     "filename": "test.json"
         ... }
         >>> scaled = apply_scaling_transformation(results, 2.0)
-        >>> scaled["Total root length"]  # Scaled
+        >>> scaled["Total root length"]  # Length
         200.0
-        >>> scaled["LR density"]  # Excluded (contains "LR density" pattern)
-        0.5
+        >>> scaled["LR density"]  # Inverse length
+        0.25
+        >>> scaled["Convex Hull Area"]  # Area
+        120.0
         >>> scaled["Mean LR angles"]  # Excluded (contains "angles" pattern)
         45.0
         >>> scaled["filename"]  # Non-numeric preserved
@@ -61,23 +68,24 @@ def apply_scaling_transformation(results, scale_factor, excluded_fields=None):
     """
     if excluded_fields is None:
         excluded_fields = {
-            "LR density",
             "alpha",
             "Mean LR angles",
             "Median LR angles",
             "LR angles",  # Array of angles (dimensionless) - explicit exclusion
             "LR count",
-            "Branched Zone density",
             "scaling distance to front",
             "Tortuosity",
             "scaling (random)",
             "normalized",  # mean_rounds_normalized, ci_low/high_normalized
             # Tradeoff metrics (dimensionless ratios)
             "Tradeoff",
-            "Actual_ratio",
-            "Optimal_ratio",
+            "Length_ratio",
+            "Distance_ratio",
+            "Actual_ratio",  # legacy name
+            "Optimal_ratio",  # legacy name
             # 3D Pareto analysis fields (ratios and parameter tuples)
             "Path tortuosity",  # Ratio: sum of (travel_dist / straight_dist)
+            "tortuosity_3d",  # Corner coverage ratios
             "alpha_beta",  # Parameter tuple, not a length
             # 3D weight and epsilon fields (dimensionless ratios)
             "beta",  # Catches beta_3d, beta_3d (random)
@@ -90,6 +98,18 @@ def apply_scaling_transformation(results, scale_factor, excluded_fields=None):
         if any(excl in key for excl in excluded_fields):
             # Do not scale excluded fields
             scaled_results[key] = value
+        elif key in INVERSE_LENGTH_FIELDS:
+            # Densities have units 1/length, so they scale by 1/s.
+            try:
+                scaled_results[key] = float(value) / scale_factor
+            except (ValueError, TypeError, ZeroDivisionError):
+                scaled_results[key] = value
+        elif key in AREA_FIELDS:
+            # Areas have units length^2, so they scale by s^2.
+            try:
+                scaled_results[key] = float(value) * scale_factor**2
+            except (ValueError, TypeError):
+                scaled_results[key] = value
         elif key in ["LR lengths", "LR minimal lengths"]:
             # Special handling for array fields - scale each element
             # Currently only LR lengths and LR minimal lengths are array-valued metrics
@@ -99,7 +119,7 @@ def apply_scaling_transformation(results, scale_factor, excluded_fields=None):
             except (ValueError, TypeError):
                 scaled_results[key] = value
         else:
-            # Scale all other numeric fields
+            # Scale all other numeric fields as lengths
             try:
                 scaled_results[key] = float(value) * scale_factor
             except (ValueError, TypeError):

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-14
+
+Ariadne 0.3.1 restructures the CSV outputs, clarifies digitized versus straightened measurements, and fixes several measurement and scaling inconsistencies.
+
+### Added
+
+- **Separate CSV reports.** `report_rsa_*.csv` contains digitized RSA measurements, `report_pareto_*.csv` contains the straightened-RSA Pareto analysis, and `report_3d_*.csv` contains the optional 3D Pareto analysis.
+- **Digitized costs in the RSA report.** `Total root length` and `Travel distance` are now reported from the original digitized graph.
+- **Straightened cost names.** The corresponding Pareto fields are now `Total root length (straightened)` and `Travel distance (straightened)`.
+
+### Changed
+
+- Tradeoff components are now `Length_ratio` and `Distance_ratio`, with `Tradeoff = Length_ratio / Distance_ratio`.
+- Scaling is dimension-aware: lengths use the scale factor, areas use its square, and inverse-length densities use its inverse.
+- 3D corner tortuosity fields are no longer length-scaled.
+- Documentation now describes the three CSV reports, the digitized/straightened distinction, and the corrected scaling rules.
+
+### Fixed
+
+- Corrected basal, branched, and apical zone boundaries so insertion segments are assigned to the correct zone.
+- `find_lowermost_node_of_primary_root()` now identifies the primary root by `LR_index is None` and works with directed or undirected graphs.
+- Corrected `calculate_tradeoff()` to use the ratio-based formulation from the referenced paper.
+- Pareto front cleaning now removes weak dominance by sorting on both wiring and travel.
+
 ## [0.3] - 2026-11-09
 
 Ariadne 0.3 keeps the trace GUI, analyze workflow, scaling, tradeoff fields, alpha interpolation, existing CSV field names, and 3D path-tortuosity analysis. The 2D scientific values can differ from 0.2.0 because the front generator, actual reference, and random baseline changed.
@@ -130,7 +154,8 @@ This release promotes the 3D Pareto path tortuosity work from [0.2.0a1](#020a1--
 - Multi-file batch processing
 - NetworkX-based graph algorithms for root networks
 
-[Unreleased]: https://github.com/jazzsta/AriadneFork/compare/v0.3...HEAD
+[Unreleased]: https://github.com/jazzsta/AriadneFork/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/jazzsta/AriadneFork/compare/v0.3...v0.3.1
 [0.3]: https://github.com/jazzsta/AriadneFork/compare/v0.2.0...v0.3
 [0.2.0]: https://github.com/jazzsta/AriadneFork/compare/v0.2.0a1...v0.2.0
 [0.2.0a1]: https://github.com/jazzsta/AriadneFork/compare/v0.1.0a1...v0.2.0a1
