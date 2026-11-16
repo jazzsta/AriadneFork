@@ -1835,8 +1835,22 @@ def _tree_hover_script(
   const svg = panel.querySelector("#rsa-hover-tree-svg");
   const svgNS = "http://www.w3.org/2000/svg";
 
+  const baseSvgHeight = 245;
+  const magnificationFactor = 3.0;
+  let panelScale = 1;
+  let basePanelWidth = 180;
+  let lastPayload = null;
+  let lastTitle = "";
+  let lastHoverEvent = null;
+  let leftButtonDown = false;
+
   function hideTreePanel() {
     panel.style.display = "none";
+  }
+
+  function applyPanelDimensions() {
+    panel.style.width = `${basePanelWidth * panelScale}px`;
+    svg.style.height = `${baseSvgHeight * panelScale}px`;
   }
 
   function sizePanelToTitle() {
@@ -1845,7 +1859,18 @@ def _tree_hover_script(
     const textWidth = Math.ceil(range.getBoundingClientRect().width);
     // The frame is title-width plus a small margin. Padding is intentionally
     // tiny, so most of the width is available to the tree drawing.
-    panel.style.width = `${Math.max(120, textWidth + 22)}px`;
+    basePanelWidth = Math.max(120, textWidth + 22);
+    applyPanelDimensions();
+  }
+
+  function setPanelScale(scale) {
+    if (panelScale === scale) return;
+    panelScale = scale;
+    applyPanelDimensions();
+    if (panel.style.display !== "none" && lastPayload) {
+      drawTree(lastPayload, lastTitle);
+      positionTreePanel(lastHoverEvent);
+    }
   }
 
   function drawTree(payload, titleText) {
@@ -1971,6 +1996,31 @@ def _tree_hover_script(
     panel.style.top = `${top}px`;
   }
 
+  // Holding the left mouse button magnifies the RSA panel by 3x in both
+  // dimensions (9x area). Releasing it restores the original size.
+  // Capture the event so Plotly does not start a zoom/selection drag while
+  // the tree panel is being magnified.
+  window.addEventListener("mousedown", function (event) {
+    if (event.button !== 0) return;
+    leftButtonDown = true;
+    if (panel.style.display === "block") {
+      event.preventDefault();
+      event.stopPropagation();
+      setPanelScale(magnificationFactor);
+    }
+  }, true);
+
+  window.addEventListener("mouseup", function (event) {
+    if (event.button !== 0) return;
+    leftButtonDown = false;
+    setPanelScale(1);
+  });
+
+  window.addEventListener("blur", function () {
+    leftButtonDown = false;
+    setPanelScale(1);
+  });
+
   gd.on("plotly_hover", function (event) {
     const point = event.points && event.points[0];
     if (!point || !point.data) {
@@ -1997,6 +2047,10 @@ def _tree_hover_script(
       hideTreePanel();
       return;
     }
+    lastPayload = payload;
+    lastTitle = titleText;
+    lastHoverEvent = event;
+    panelScale = leftButtonDown ? magnificationFactor : 1;
     panel.style.display = "block";
     drawTree(payload, titleText);
     positionTreePanel(event);
