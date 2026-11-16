@@ -1,7 +1,7 @@
 # testing Specification
 
 ## Purpose
-TBD - created by archiving change fix-scaling-and-serialization-bugs. Update Purpose after archive.
+Define the automated test coverage required for analysis, CSV output, scaling, and scientific integration.
 ## Requirements
 ### Requirement: CSV Field Type Validation Tests
 

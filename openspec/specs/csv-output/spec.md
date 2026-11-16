@@ -1,7 +1,7 @@
 # csv-output Specification
 
 ## Purpose
-TBD - created by archiving change fix-scaling-and-serialization-bugs. Update Purpose after archive.
+Define CSV serialization, field naming, report layout, and unit-scaling behavior for Ariadne analysis outputs.
 ## Requirements
 ### Requirement: Clean CSV Serialization
 

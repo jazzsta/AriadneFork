@@ -1,7 +1,7 @@
 # documentation Specification
 
 ## Purpose
-TBD - created by archiving change fix-documentation-accuracy. Update Purpose after archive.
+Define the required scientific and output-field documentation and the accuracy checks it must satisfy.
 ## Requirements
 ### Requirement: Output Field Documentation
 

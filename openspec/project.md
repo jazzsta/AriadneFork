@@ -118,7 +118,7 @@ The project implements algorithms from published research:
 1. **Trace Mode**: Users manually trace roots by clicking to place nodes
 2. **Save**: Each traced root saved as JSON with plant ID
 3. **Analyze Mode**: Batch processing of JSON files to calculate all RSA traits
-4. **Output**: CSV file with traits + Pareto optimality graphs
+4. **Output**: Three CSV reports (digitized RSA measurements, straightened Pareto analysis, and optional 3D Pareto analysis) plus Pareto optimality graphs
 
 ## Important Constraints
 - **Research Code**: This is a work-in-progress research tool, provided as-is

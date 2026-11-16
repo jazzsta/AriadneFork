@@ -1,7 +1,7 @@
 # analysis-output Specification
 
 ## Purpose
-TBD - created by archiving change fix-scaling-and-serialization-bugs. Update Purpose after archive.
+Define the result dictionary, plotting-data, and report-splitting behavior of the Ariadne analysis pipeline.
 ## Requirements
 ### Requirement: LR Angles Python Float Serialization
 
@@ -143,50 +143,44 @@ The epsilon value represents how far the tree is from the Pareto front (>1.0 mea
 
 ### Requirement: 3D Results Field Naming Convention
 
-The `pareto_calcs_3d_path_tortuosity()` function SHALL use field names with `_3d` suffix for 3D-specific metrics to avoid conflicts with 2D field names.
+The `pareto_calcs_3d_path_tortuosity()` function SHALL use field names with a `_3d` suffix for 3D-specific metrics to keep their provenance unambiguous.
 
 This naming follows the multiplicative ε-indicator terminology from multi-objective optimization literature.
-
-**Required field names:**
-
-| Field Name | Description |
-|------------|-------------|
-| `Total root length` | Material cost (same as 2D) |
-| `Travel distance` | Transport cost (same as 2D) |
-| `Path tortuosity` | Third dimension (3D only) |
-| `alpha_3d` | Interpolated α weight |
-| `beta_3d` | Interpolated β weight |
-| `gamma_3d` | Computed γ = 1 - α - β |
-| `epsilon_3d` | Multiplicative ε-indicator |
-| `epsilon_3d_material` | Length ratio: actual/optimal |
-| `epsilon_3d_transport` | Distance ratio: actual/optimal |
-| `epsilon_3d_coverage` | Tortuosity ratio: actual/optimal |
-| `alpha_3d (random)` | Interpolated α weight for random tree |
-| `beta_3d (random)` | Interpolated β weight for random tree |
-| `gamma_3d (random)` | Computed γ = 1 - α - β for random tree |
-| `epsilon_3d (random)` | Multiplicative ε-indicator for random tree |
-| `epsilon_3d_material (random)` | Length ratio for random tree |
-| `epsilon_3d_transport (random)` | Distance ratio for random tree |
-| `epsilon_3d_coverage (random)` | Tortuosity ratio for random tree |
-| `Steiner_length_3d` | Corner cost (α=1) |
-| `Steiner_distance_3d` | Corner cost (α=1) |
-| `Steiner_tortuosity_3d` | Corner cost (α=1) |
-| `Satellite_length_3d` | Corner cost (β=1) |
-| `Satellite_distance_3d` | Corner cost (β=1) |
-| `Satellite_tortuosity_3d` | Corner cost (β=1) |
-| `Coverage_length_3d` | Corner cost (γ=1) |
-| `Coverage_distance_3d` | Corner cost (γ=1) |
-| `Coverage_tortuosity_3d` | Corner cost (γ=1) |
 
 #### Scenario: 3D fields use _3d suffix
 - **GIVEN** 3D Pareto analysis is performed
 - **WHEN** results are returned
 - **THEN** epsilon and weight fields use `_3d` suffix
-- **AND** shared measurement fields (Total root length, etc.) use same names as 2D
+- **AND** shared measurement fields retain their established names
 
 #### Scenario: No field name conflicts with 2D
 - **GIVEN** both 2D and 3D analysis results
 - **WHEN** results are compared or merged
 - **THEN** `epsilon_3d` does not conflict with 2D `scaling distance to front`
 - **AND** field provenance is unambiguous
+
+### Requirement: 3D Actual Tree Fields
+
+The `pareto_calcs_3d_path_tortuosity()` result dictionary SHALL expose `Total root length`, `Travel distance`, `Path tortuosity`, `alpha_3d`, `beta_3d`, `gamma_3d`, `epsilon_3d`, `epsilon_3d_material`, `epsilon_3d_transport`, and `epsilon_3d_coverage`.
+
+#### Scenario: Actual 3D fields are present
+- **WHEN** `pareto_calcs_3d_path_tortuosity()` returns results
+- **THEN** every actual-tree field listed above SHALL be present
+
+### Requirement: 3D Random Tree Fields
+
+The `pareto_calcs_3d_path_tortuosity()` result dictionary SHALL expose `alpha_3d (random)`, `beta_3d (random)`, `gamma_3d (random)`, `epsilon_3d (random)`, `epsilon_3d_material (random)`, `epsilon_3d_transport (random)`, and `epsilon_3d_coverage (random)`.
+
+#### Scenario: Random 3D fields are present
+- **WHEN** `pareto_calcs_3d_path_tortuosity()` returns results
+- **THEN** every random-tree field listed above SHALL be present
+
+### Requirement: 3D Corner Reference Fields
+
+The `pareto_calcs_3d_path_tortuosity()` result dictionary SHALL expose the Steiner, Satellite, and Coverage corner fields: `Steiner_length_3d`, `Steiner_distance_3d`, `Steiner_tortuosity_3d`, `Satellite_length_3d`, `Satellite_distance_3d`, `Satellite_tortuosity_3d`, `Coverage_length_3d`, `Coverage_distance_3d`, and `Coverage_tortuosity_3d`.
+
+#### Scenario: Corner 3D fields are present
+- **WHEN** `pareto_calcs_3d_path_tortuosity()` returns results
+- **THEN** every corner field listed above SHALL be present
+- **AND** the fields SHALL use the Steiner, Satellite, and Coverage names
 

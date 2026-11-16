@@ -1,7 +1,7 @@
 # gui Specification
 
 ## Purpose
-TBD - created by archiving change add-analysis-progress-feedback. Update Purpose after archive.
+Define the Analyzer GUI's progress feedback, layout stability, and analysis-option clarity.
 ## Requirements
 ### Requirement: Analysis Progress Feedback
 
